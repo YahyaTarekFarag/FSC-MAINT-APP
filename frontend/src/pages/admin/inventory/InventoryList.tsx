@@ -1,11 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-    Package,
-    Plus,
-    Search,
-    AlertTriangle,
-    ArrowRight,
-import { Plus, Search, Filter, AlertTriangle, Package, History, TrendingUp, X, Edit, Loader2, Upload, Download } from 'lucide-react';
+import { Plus, Search, Filter, AlertTriangle, Package, History, TrendingUp, X, Edit, Loader2, Upload, Download, ArrowRight, Trash2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { logActivity } from '../../../lib/api';
@@ -56,6 +50,12 @@ const InventoryList = () => {
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [historyData, setHistoryData] = useState<any[]>([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+
+    // Restock / Modal State
+    const [showRestockModal, setShowRestockModal] = useState(false);
+    const [selectedPart, setSelectedPart] = useState<SparePart | null>(null);
+    const [restockAmount, setRestockAmount] = useState<number>(1);
+    const [submitting, setSubmitting] = useState(false);
 
     const fetchHistory = async (partId: string) => {
         setHistoryLoading(true);
