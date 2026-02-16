@@ -12,14 +12,25 @@ import {
     Building2,
     Image as ImageIcon,
     Loader2,
-    User
+    User,
+    Activity
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/supabase';
 import TicketComments from '../../components/tickets/TicketComments';
+import CloseTicketModal from '../../components/tickets/CloseTicketModal';
+import { useGeoLocation } from '../../hooks/useGeoLocation';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     branch: Database['public']['Tables']['branches']['Row'];
+    form_data?: Record<string, any>;
+    category_id?: string; // Ensure this is typed
+};
+
+type Question = {
+    id: number;
+    question_text: string;
+    field_type: string;
 };
 
 interface TicketDetailsProps {
@@ -30,8 +41,11 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const [ticket, setTicket] = useState<Ticket | null>(null);
+    const [questionsMap, setQuestionsMap] = useState<Record<string, Question>>({});
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
+    const [showCloseModal, setShowCloseModal] = useState(false);
+    const { getCoordinates } = useGeoLocation();
 
     const fetchTicketDetails = useCallback(async () => {
         if (!id) return;
@@ -43,7 +57,26 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                 .single();
 
             if (error) throw error;
-            setTicket((data as unknown) as Ticket);
+            const ticketData = (data as unknown) as Ticket;
+            setTicket(ticketData);
+
+            // Fetch questions if form_data exists
+            if (ticketData.form_data && Object.keys(ticketData.form_data).length > 0) {
+                const questionIds = Object.keys(ticketData.form_data);
+                const { data: questions, error: qError } = await supabase
+                    .from('category_questions' as any)
+                    .select('id, question_text, field_type')
+                    .in('id', questionIds);
+
+                if (!qError && questions) {
+                    const map: Record<string, Question> = {};
+                    questions.forEach((q: any) => {
+                        map[q.id] = q;
+                    });
+                    setQuestionsMap(map);
+                }
+            }
+
         } catch (err) {
             console.error('Error fetching ticket details:', err);
             navigate('/tickets');
@@ -60,13 +93,32 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
         if (!ticket || !id) return;
         setActionLoading(true);
         try {
+            let coords = null;
+            try {
+                coords = await getCoordinates();
+            } catch (geoErr) {
+                console.warn('Geolocation failed, proceeding without coordinates:', geoErr);
+            }
+
+            const updateData: any = {
+                status: newStatus,
+                technician_id: userProfile?.id,
+                updated_at: new Date().toISOString()
+            };
+
+            if (coords) {
+                if (newStatus === 'in_progress') {
+                    updateData.start_work_lat = coords.latitude;
+                    updateData.start_work_lng = coords.longitude;
+                } else if (newStatus === 'closed') {
+                    updateData.end_work_lat = coords.latitude;
+                    updateData.end_work_lng = coords.longitude;
+                }
+            }
+
             const { error } = await (supabase
                 .from('tickets') as any)
-                .update({
-                    status: newStatus,
-                    technician_id: userProfile?.id,
-                    updated_at: new Date().toISOString()
-                })
+                .update(updateData)
                 .eq('id', id);
 
             if (error) throw error;
@@ -148,7 +200,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                         {ticket.status === 'in_progress' && (
                             <button
                                 disabled={actionLoading}
-                                onClick={() => updateStatus('closed')}
+                                onClick={() => setShowCloseModal(true)}
                                 className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50"
                             >
                                 {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
@@ -172,6 +224,41 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                             {ticket.description || 'لا يوجد وصف تفصيلي للمشكلة'}
                         </p>
                     </div>
+
+                    {/* Diagnostic Data (Dynamic Form) */}
+                    {ticket.form_data && Object.keys(ticket.form_data).length > 0 && (
+                        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                            <div className="flex items-center gap-2 text-slate-900 font-bold text-lg">
+                                <Activity className="w-5 h-5 text-blue-600" />
+                                بيانات التشخيص
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {Object.entries(ticket.form_data).map(([key, value]) => {
+                                    const question = questionsMap[key];
+                                    return (
+                                        <div key={key} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                            <p className="text-xs text-slate-500 font-bold mb-1">
+                                                {question ? question.question_text : 'سؤال غير معروف'}
+                                            </p>
+                                            <div className="font-medium text-slate-900">
+                                                {question?.field_type === 'yes_no' ? (
+                                                    value === 'yes' ?
+                                                        <span className="text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> نعم</span> :
+                                                        <span className="text-slate-500">لا</span>
+                                                ) : question?.field_type === 'photo' ? (
+                                                    <a href={value as string} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline flex items-center gap-1">
+                                                        <ImageIcon className="w-4 h-4" /> عرض الصورة
+                                                    </a>
+                                                ) : (
+                                                    <span>{String(value)}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Image Gallery */}
                     {ticket.images_url && ticket.images_url.length > 0 && (
@@ -267,6 +354,18 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                     </div>
                 </div>
             </div>
+            {/* Close Ticket Modal */}
+            {showCloseModal && ticket && (
+                <CloseTicketModal
+                    ticketId={ticket.id}
+                    categoryId={ticket.category_id || ''}
+                    onClose={() => setShowCloseModal(false)}
+                    onSuccess={() => {
+                        setShowCloseModal(false);
+                        fetchTicketDetails();
+                    }}
+                />
+            )}
         </div>
     );
 };

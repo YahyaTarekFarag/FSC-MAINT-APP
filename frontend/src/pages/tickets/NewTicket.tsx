@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadTicketImage } from '../../lib/storage';
+import DynamicForm from '../../components/tickets/DynamicForm';
 import type { Database } from '../../lib/supabase';
 
 type Branch = Database['public']['Tables']['branches']['Row'];
@@ -25,13 +26,18 @@ const NewTicket: React.FC = () => {
 
     const [form, setForm] = useState({
         branch_id: '',
-        fault_category: '',
+        fault_category: '', // Stores the name for legacy support
         priority: 'medium',
         description: ''
     });
 
+    const [categories, setCategories] = useState<{ id: string, name_ar: string }[]>([]);
+    const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+    const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
+
     useEffect(() => {
         fetchBranches();
+        fetchCategories();
     }, []);
 
     const fetchBranches = async () => {
@@ -39,6 +45,7 @@ const NewTicket: React.FC = () => {
             const { data, error } = await supabase
                 .from('branches')
                 .select('id, name_ar')
+                .eq('status', 'active')
                 .order('name_ar');
             if (error) throw error;
             setBranches(data || []);
@@ -46,6 +53,21 @@ const NewTicket: React.FC = () => {
             console.error('Error fetching branches:', err);
         } finally {
             setFetchingBranches(false);
+        }
+    };
+
+    const fetchCategories = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('fault_categories')
+                .select('id, name_ar')
+                .eq('is_active', true)
+                .order('name_ar');
+
+            if (error) throw error;
+            setCategories(data || []);
+        } catch (err) {
+            console.error('Error fetching categories:', err);
         }
     };
 
@@ -80,7 +102,8 @@ const NewTicket: React.FC = () => {
                 priority: form.priority,
                 description: form.description,
                 images_url: imageUrls,
-                status: 'open'
+                status: 'open',
+                form_data: dynamicData
             });
 
             if (error) throw error;
@@ -95,7 +118,6 @@ const NewTicket: React.FC = () => {
         }
     };
 
-    const categories = ['كهرباء', 'سباكة', 'تبريد وتكييف', 'معدات مطبخ', 'إنشاءات', 'أخرى'];
     const priorities = [
         { value: 'low', label: 'عادي', color: 'slate' },
         { value: 'medium', label: 'متوسط', color: 'blue' },
@@ -144,18 +166,26 @@ const NewTicket: React.FC = () => {
                             تصنيف العطل
                         </label>
                         <div className="grid grid-cols-2 gap-2">
-                            {categories.map(cat => (
+                            {categories.length === 0 ? (
+                                <div className="col-span-2 text-center py-4 text-slate-400">
+                                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+                                    جاري تحميل التصنيفات...
+                                </div>
+                            ) : categories.map(cat => (
                                 <button
-                                    key={cat}
+                                    key={cat.id}
                                     type="button"
-                                    onClick={() => setForm({ ...form, fault_category: cat })}
-                                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border
-                                        ${form.fault_category === cat
+                                    onClick={() => {
+                                        setForm({ ...form, fault_category: cat.name_ar });
+                                        setSelectedCategoryId(cat.id);
+                                    }}
+                                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all border break-words
+                                        ${selectedCategoryId === cat.id
                                             ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
                                             : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-blue-300'}
                                     `}
                                 >
-                                    {cat}
+                                    {cat.name_ar}
                                 </button>
                             ))}
                         </div>
@@ -197,6 +227,14 @@ const NewTicket: React.FC = () => {
                         placeholder="اشرح العطل بوضوح لمساعدة الفني..."
                     />
                 </div>
+
+                {/* Dynamic Form Questions */}
+                {selectedCategoryId && (
+                    <DynamicForm
+                        categoryId={selectedCategoryId}
+                        onChange={setDynamicData}
+                    />
+                )}
 
                 {/* Image Upload */}
                 <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">

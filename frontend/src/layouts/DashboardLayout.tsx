@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -10,10 +10,16 @@ import {
     Menu,
     X,
     Bell,
-    ChevronLeft
+    ChevronLeft,
+    Monitor,
+    Play,
+    Square,
+    Loader2
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
 import InstallPWA from '../components/InstallPWA';
+import { useGeoLocation } from '../hooks/useGeoLocation';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -35,6 +41,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             path: '/dashboard',
             icon: LayoutDashboard,
             show: true
+        },
+        {
+            label: 'إدارة النظام',
+            path: '/admin/console',
+            icon: Monitor,
+            show: isAdmin
         },
         {
             label: 'الفروع',
@@ -61,6 +73,58 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             show: true
         },
     ];
+
+    const { getCoordinates } = useGeoLocation();
+    const [isShiftActive, setIsShiftActive] = useState(false);
+    const [shiftLoading, setShiftLoading] = useState(false);
+
+    const checkShiftStatus = useCallback(async () => {
+        if (!profile) return;
+        const { data } = await (supabase
+            .from('attendance_logs' as any)
+            .select('action_type')
+            .eq('user_id', profile.id)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle() as any);
+
+        if (data && data.action_type === 'check_in') {
+            setIsShiftActive(true);
+        } else {
+            setIsShiftActive(false);
+        }
+    }, [profile]);
+
+    useEffect(() => {
+        checkShiftStatus();
+    }, [checkShiftStatus]);
+
+    const toggleShift = async () => {
+        if (!profile) return;
+        setShiftLoading(true);
+        try {
+            const coords = await getCoordinates();
+            const actionType = isShiftActive ? 'check_out' : 'check_in';
+
+            const { error } = await (supabase
+                .from('attendance_logs' as any)
+                .insert({
+                    user_id: profile.id,
+                    action_type: actionType,
+                    location_lat: coords.latitude,
+                    location_lng: coords.longitude,
+                    device_info: navigator.userAgent
+                }) as any);
+
+            if (error) throw error;
+            setIsShiftActive(!isShiftActive);
+            alert(actionType === 'check_in' ? 'تم تسجيل بداية المناوبة بنجاح 🟢' : 'تم تسجيل نهاية المناوبة بنجاح 🔴');
+        } catch (err: any) {
+            alert('فشل في تسجيل البصمة: ' + (err.message || err));
+        } finally {
+            setShiftLoading(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 flex font-sans rtl" dir="rtl">
@@ -146,6 +210,28 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                     </button>
 
                     <div className="flex items-center gap-4 mr-auto lg:mr-0">
+                        {/* Shift Control */}
+                        <button
+                            onClick={toggleShift}
+                            disabled={shiftLoading}
+                            className={`
+                                flex items-center gap-2 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all
+                                ${isShiftActive
+                                    ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100'
+                                    : 'bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100'}
+                                ${shiftLoading ? 'opacity-50 cursor-not-allowed' : ''}
+                            `}
+                        >
+                            {shiftLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : isShiftActive ? (
+                                <Square className="w-3 h-3 fill-current" />
+                            ) : (
+                                <Play className="w-3 h-3 fill-current" />
+                            )}
+                            {isShiftActive ? 'إنهاء المناوبة' : 'بدء المناوبة'}
+                        </button>
+
                         <div className="hidden sm:flex flex-col items-start rtl:items-end">
                             <span className="text-sm font-bold text-slate-900">{profile?.full_name}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize

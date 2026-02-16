@@ -14,6 +14,10 @@ import TicketList from './pages/tickets/TicketList';
 import TicketDetails from './pages/tickets/TicketDetails';
 import BranchList from './pages/admin/branches/BranchList';
 import StaffList from './pages/admin/staff/StaffList';
+import AdminConsole from './pages/admin/AdminConsole';
+import FormBuilder from './pages/admin/settings/FormBuilder';
+import InventoryList from './pages/admin/inventory/InventoryList';
+import ReportsPage from './pages/reports/ReportsPage';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -95,9 +99,17 @@ function App() {
           {/* Admin Only Routes */}
           {profile?.role === 'admin' && (
             <>
+              <Route path="admin/console" element={<AdminConsole />} />
+              <Route path="admin/inventory" element={<InventoryList />} />
+              <Route path="admin/forms" element={<FormBuilder />} />
               <Route path="branches" element={<BranchList />} />
               <Route path="staff" element={<StaffList />} />
             </>
+          )}
+
+          {/* Reports (Admin & Manager) */}
+          {(profile?.role === 'admin' || profile?.role === 'manager') && (
+            <Route path="reports" element={<ReportsPage />} />
           )}
         </Route>
 
