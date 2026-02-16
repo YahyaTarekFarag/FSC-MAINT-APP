@@ -8,7 +8,9 @@ import { Loader2 } from 'lucide-react';
 // Components
 import Login from './pages/Login';
 import DashboardLayout from './layouts/DashboardLayout';
+import AdminLayout from './layouts/AdminLayout';
 import DashboardHome from './pages/dashboard/DashboardHome';
+import SystemSettings from './pages/admin/settings/SystemSettings';
 import NewTicket from './pages/tickets/NewTicket';
 import TicketList from './pages/tickets/TicketList';
 import TicketDetails from './pages/tickets/TicketDetails';
@@ -17,7 +19,12 @@ import StaffList from './pages/admin/staff/StaffList';
 import AdminConsole from './pages/admin/AdminConsole';
 import FormBuilder from './pages/admin/settings/FormBuilder';
 import InventoryList from './pages/admin/inventory/InventoryList';
-import ReportsPage from './pages/reports/ReportsPage';
+import ReportsPage from './pages/admin/reports/ReportsPage';
+import OrganizationManager from './pages/admin/structure/OrganizationManager';
+import UserManager from './pages/admin/users/UserManager';
+import DashboardAnalytics from './pages/admin/DashboardAnalytics';
+import MasterDataManager from './pages/admin/settings/MasterDataManager';
+import AuditLogs from './pages/admin/logs/AuditLogs';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -96,12 +103,26 @@ function App() {
           <Route path="tickets" element={<TicketList userProfile={profile} />} />
           <Route path="tickets/:id" element={<TicketDetails userProfile={profile} />} />
 
-          {/* Admin Only Routes */}
+          {/* Admin Routes (Wrapped in AdminLayout) */}
+          {profile?.role === 'admin' && (
+            <Route path="admin" element={<AdminLayout />}>
+              <Route path="dashboard" element={<DashboardAnalytics />} />
+              <Route path="console" element={<AdminConsole />} />
+              <Route path="tickets" element={<TicketList userProfile={profile} />} />
+              <Route path="inventory" element={<InventoryList />} />
+              <Route path="forms" element={<FormBuilder />} />
+              <Route path="structure" element={<OrganizationManager />} />
+              <Route path="users" element={<UserManager />} />
+              <Route path="analytics" element={<DashboardAnalytics />} />
+              <Route path="logs" element={<AuditLogs />} />
+              <Route path="settings/master-data" element={<MasterDataManager />} />
+              <Route path="settings/system" element={<SystemSettings />} />
+            </Route>
+          )}
+
+          {/* Legacy/Direct Access (if needed) or Redirects */}
           {profile?.role === 'admin' && (
             <>
-              <Route path="admin/console" element={<AdminConsole />} />
-              <Route path="admin/inventory" element={<InventoryList />} />
-              <Route path="admin/forms" element={<FormBuilder />} />
               <Route path="branches" element={<BranchList />} />
               <Route path="staff" element={<StaffList />} />
             </>

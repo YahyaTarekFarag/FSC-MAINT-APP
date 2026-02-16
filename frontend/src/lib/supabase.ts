@@ -25,14 +25,50 @@ export type Database = {
                 Update: { id?: string; area_id?: string; brand_id?: string; name_ar?: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; created_at?: string };
             };
             profiles: {
-                Row: { id: string; full_name: string | null; role: 'admin' | 'manager' | 'technician'; specialization: string | null; assigned_sector_id: string | null; assigned_area_id: string | null; created_at: string };
-                Insert: { id: string; full_name?: string | null; role?: 'admin' | 'manager' | 'technician'; specialization?: string | null; assigned_sector_id?: string | null; assigned_area_id?: string | null; created_at?: string };
-                Update: { id?: string; full_name?: string | null; role?: 'admin' | 'manager' | 'technician'; specialization?: string | null; assigned_sector_id?: string | null; assigned_area_id?: string | null; created_at?: string };
+                Row: {
+                    id: string;
+                    full_name: string | null;
+                    email: string | null;
+                    phone: string | null;
+                    role: 'admin' | 'manager' | 'technician';
+                    specialization: string | null;
+                    assigned_sector_id: string | null;
+                    assigned_area_id: string | null;
+                    branch_id: string | null;
+                    status: 'active' | 'suspended';
+                    created_at: string
+                };
+                Insert: {
+                    id: string;
+                    full_name?: string | null;
+                    email?: string | null;
+                    phone?: string | null;
+                    role?: 'admin' | 'manager' | 'technician';
+                    specialization?: string | null;
+                    assigned_sector_id?: string | null;
+                    assigned_area_id?: string | null;
+                    branch_id?: string | null;
+                    status?: 'active' | 'suspended';
+                    created_at?: string
+                };
+                Update: {
+                    id?: string;
+                    full_name?: string | null;
+                    email?: string | null;
+                    phone?: string | null;
+                    role?: 'admin' | 'manager' | 'technician';
+                    specialization?: string | null;
+                    assigned_sector_id?: string | null;
+                    assigned_area_id?: string | null;
+                    branch_id?: string | null;
+                    status?: 'active' | 'suspended';
+                    created_at?: string
+                };
             };
             fault_categories: {
-                Row: { id: string; name_ar: string; created_at: string };
-                Insert: { id?: string; name_ar: string; created_at?: string };
-                Update: { id?: string; name_ar?: string; created_at?: string };
+                Row: { id: string; name_ar: string; icon: string | null; is_active: boolean; created_at: string };
+                Insert: { id?: string; name_ar: string; icon?: string | null; is_active?: boolean; created_at?: string };
+                Update: { id?: string; name_ar?: string; icon?: string | null; is_active?: boolean; created_at?: string };
             };
             category_questions: {
                 Row: { id: number; category_id: string; question_text: string; field_type: string; options: string[] | null; is_required: boolean; stage: 'diagnosis' | 'closing'; order_index: number; created_at: string };
@@ -118,6 +154,43 @@ export type Database = {
                 Row: { id: number; part_id: number; ticket_id: string | null; user_id: string; change_amount: number; transaction_type: 'restock' | 'consumption' | 'adjustment' | 'return'; notes: string | null; created_at: string };
                 Insert: { id?: number; part_id: number; ticket_id?: string | null; user_id: string; change_amount: number; transaction_type: 'restock' | 'consumption' | 'adjustment' | 'return'; notes?: string | null; created_at?: string };
                 Update: { id?: number; part_id?: number; ticket_id?: string | null; user_id?: string; change_amount?: number; transaction_type?: 'restock' | 'consumption' | 'adjustment' | 'return'; notes?: string | null; created_at?: string };
+            };
+            unit_types: {
+                Row: {
+                    id: number;
+                    name_ar: string;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: number;
+                    name_ar: string;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: number;
+                    name_ar?: string;
+                    created_at?: string;
+                };
+            };
+            system_config: {
+                Row: {
+                    key: string;
+                    value: any;
+                    description: string | null;
+                    updated_at: string;
+                };
+                Insert: {
+                    key: string;
+                    value?: any;
+                    description?: string | null;
+                    updated_at?: string;
+                };
+                Update: {
+                    key?: string;
+                    value?: any;
+                    description?: string | null;
+                    updated_at?: string;
+                };
             };
         };
     };

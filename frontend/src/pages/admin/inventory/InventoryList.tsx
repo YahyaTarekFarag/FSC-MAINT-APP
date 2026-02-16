@@ -5,26 +5,33 @@ import {
     Search,
     AlertTriangle,
     ArrowRight,
-    Filter,
-    MoreVertical,
-    History,
-    TrendingUp,
-    TrendingDown,
-    Loader2
-} from 'lucide-react';
+import { Plus, Search, Filter, AlertTriangle, Package, History, TrendingUp, X, Edit, Loader2, Upload, Download } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { logActivity } from '../../../lib/api';
+import * as XLSX from 'xlsx';
 
 // Types
 type SparePart = {
-    id: number;
+    id: string;
     name_ar: string;
     part_number: string | null;
+    description: string | null;
     quantity: number;
     min_threshold: number;
     price: number;
+    location: string | null;
+    supplier: string | null;
+    compatible_models: string | null;
     image_url: string | null;
     category_id: string | null;
+    unit_id: number | null;
+    unit_types?: {
+        name_ar: string;
+    };
+    category?: {
+        name_ar: string;
+    };
 };
 
 type Category = {
@@ -32,26 +39,64 @@ type Category = {
     name_ar: string;
 };
 
+type UnitType = {
+    id: number;
+    name_ar: string;
+};
+
 const InventoryList = () => {
     const navigate = useNavigate();
     const [parts, setParts] = useState<SparePart[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [units, setUnits] = useState<UnitType[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [showRestockModal, setShowRestockModal] = useState(false);
-    const [selectedPart, setSelectedPart] = useState<SparePart | null>(null);
-    const [restockAmount, setRestockAmount] = useState<number>(1);
-    const [submitting, setSubmitting] = useState(false);
+    const [showModal, setShowModal] = useState(false);
+    const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+    const [historyData, setHistoryData] = useState<any[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
 
-    // New Part Form State
-    const [newPart, setNewPart] = useState({
+    const fetchHistory = async (partId: string) => {
+        setHistoryLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('inventory_transactions')
+                .select(`
+                    *,
+                    user:user_id(email)
+                `)
+                .eq('part_id', partId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setHistoryData(data || []);
+        } catch (err) {
+            console.error('Error fetching history:', err);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
+    const openHistory = (part: SparePart) => {
+        setSelectedPart(part);
+        setShowHistoryModal(true);
+        fetchHistory(part.id);
+    };
+
+    // Form State
+    const [formData, setFormData] = useState({
         name_ar: '',
         part_number: '',
+        description: '',
         quantity: 0,
         min_threshold: 5,
         price: 0,
-        category_id: ''
+        location: '',
+        supplier: '',
+        compatible_models: '',
+        category_id: '',
+        unit_id: ''
     });
 
     useEffect(() => {
@@ -60,16 +105,22 @@ const InventoryList = () => {
 
     const fetchInitialData = async () => {
         try {
-            const [partsRes, catsRes] = await Promise.all([
-                supabase.from('spare_parts').select('*').order('name_ar'),
-                supabase.from('fault_categories').select('id, name_ar').eq('is_active', true)
+            const [partsRes, catsRes, unitsRes] = await Promise.all([
+                supabase.from('spare_parts').select(`
+                    *,
+                    unit_types (name_ar)
+                `).order('name_ar'),
+                supabase.from('fault_categories').select('id, name_ar').eq('is_active', true),
+                supabase.from('unit_types').select('*').order('name_ar')
             ]);
 
             if (partsRes.error) throw partsRes.error;
             if (catsRes.error) throw catsRes.error;
+            if (unitsRes.error) throw unitsRes.error;
 
-            setParts(partsRes.data || []);
+            setParts(partsRes.data as any || []);
             setCategories(catsRes.data || []);
+            setUnits(unitsRes.data || []);
         } catch (err) {
             console.error('Error fetching inventory data:', err);
         } finally {
@@ -77,33 +128,89 @@ const InventoryList = () => {
         }
     };
 
-    const handleAddPart = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const { error } = await supabase.from('spare_parts').insert({
-                ...newPart,
-                category_id: newPart.category_id || null
-            });
+            const payload = {
+                name_ar: formData.name_ar,
+                part_number: formData.part_number,
+                description: formData.description,
+                quantity: formData.quantity,
+                min_threshold: formData.min_threshold,
+                price: formData.price,
+                location: formData.location,
+                supplier: formData.supplier,
+                compatible_models: formData.compatible_models,
+                category_id: formData.category_id || null,
+                unit_id: formData.unit_id ? parseInt(formData.unit_id) : null
+            };
 
-            if (error) throw error;
+            if (modalMode === 'add') {
+                const { data, error } = await supabase.from('spare_parts').insert(payload).select().single();
+                if (error) throw error;
+                await logActivity('CREATE', 'PART', { id: data.id, ...payload });
+            } else {
+                if (!selectedPart) return;
+                const { error } = await supabase
+                    .from('spare_parts')
+                    .update(payload)
+                    .eq('id', selectedPart.id);
+                if (error) throw error;
+                await logActivity('UPDATE', 'PART', { id: selectedPart.id, ...payload });
+            }
 
             await fetchInitialData();
-            setShowAddModal(false);
-            setNewPart({
-                name_ar: '',
-                part_number: '',
-                quantity: 0,
-                min_threshold: 5,
-                price: 0,
-                category_id: ''
-            });
+            setShowModal(false);
+            resetForm();
         } catch (err) {
-            console.error('Error adding part:', err);
-            alert('فشل في إضافة القطعة');
+            console.error('Error saving part:', err);
+            alert('فشل في حفظ البيانات');
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const resetForm = () => {
+        setFormData({
+            name_ar: '',
+            part_number: '',
+            description: '',
+            quantity: 0,
+            min_threshold: 5,
+            price: 0,
+            location: '',
+            supplier: '',
+            compatible_models: '',
+            category_id: '',
+            unit_id: ''
+        });
+        setSelectedPart(null);
+    };
+
+    const openEditModal = (part: SparePart) => {
+        setSelectedPart(part);
+        setFormData({
+            name_ar: part.name_ar,
+            part_number: part.part_number || '',
+            description: part.description || '',
+            quantity: part.quantity,
+            min_threshold: part.min_threshold,
+            price: part.price,
+            location: part.location || '',
+            supplier: part.supplier || '',
+            compatible_models: part.compatible_models || '',
+            category_id: part.category_id || '',
+            unit_id: part.unit_id ? part.unit_id.toString() : ''
+        });
+        setModalMode('edit');
+        setShowModal(true);
+    };
+
+    const openAddModal = () => {
+        resetForm();
+        setModalMode('add');
+        setShowModal(true);
     };
 
     const handleRestock = async (e: React.FormEvent) => {
@@ -127,6 +234,12 @@ const InventoryList = () => {
 
             if (error) throw error;
 
+            await logActivity('UPDATE', 'PART', {
+                id: selectedPart.id,
+                action: 'RESTOCK',
+                amount: restockAmount
+            });
+
             await fetchInitialData();
             setShowRestockModal(false);
             setSelectedPart(null);
@@ -136,6 +249,116 @@ const InventoryList = () => {
             alert('فشل في إعادة التخزين');
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleExport = () => {
+        const dataToExport = parts.map(p => ({
+            'الاسم': p.name_ar,
+            'رقم القطعة': p.part_number,
+            'الكمية': p.quantity,
+            'الحد الأدنى': p.min_threshold,
+            'السعر': p.price,
+            'الموقع': p.location,
+            'المورد': p.supplier,
+            'الوصف': p.description,
+            'موديلات': p.compatible_models,
+            'الوحدة': p.unit_types?.name_ar || '',
+            'التصنيف': p.category?.name_ar || ''
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+        XLSX.writeFile(wb, "inventory_export.xlsx");
+    };
+
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setLoading(true);
+        try {
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data);
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const row of jsonData) {
+                // Basic mapping - logic can be improved to match exact columns or use fuzzy search
+                // Assuming columns match Export format
+                const partData = {
+                    name_ar: row['الاسم'] || row['name_ar'] || 'Unknown Part',
+                    part_number: row['رقم القطعة'] || row['part_number'],
+                    quantity: parseInt(row['الكمية'] || row['quantity'] || '0'),
+                    min_threshold: parseInt(row['الحد الأدنى'] || row['min_threshold'] || '5'),
+                    price: parseFloat(row['السعر'] || row['price'] || '0'),
+                    location: row['الموقع'] || row['location'],
+                    supplier: row['المورد'] || row['supplier'],
+                    description: row['الوصف'] || row['description'],
+                    compatible_models: row['موديلات'] || row['compatible_models'],
+                    // Note: Category and Unit linking requires ID lookup, skipping for simple import or default to null
+                };
+
+                // Check if exists to update or insert
+                /* 
+                   Strategy: If part_number exists, update. Else insert. 
+                   Warning: If no part_number, might duplicate names.
+                */
+
+                let error = null;
+                if (partData.part_number) {
+                    const { data: existing } = await supabase
+                        .from('spare_parts')
+                        .select('id')
+                        .eq('part_number', partData.part_number)
+                        .single();
+
+                    if (existing) {
+                        const { error: err } = await supabase.from('spare_parts').update(partData).eq('id', existing.id);
+                        error = err;
+                    } else {
+                        const { error: err } = await supabase.from('spare_parts').insert(partData);
+                        error = err;
+                    }
+                } else {
+                    const { error: err } = await supabase.from('spare_parts').insert(partData);
+                    error = err;
+                }
+
+                if (error) {
+                    console.error('Row Import Error:', error);
+                    failCount++;
+                } else {
+                    successCount++;
+                }
+            }
+
+            alert(`تم الاستيراد: ${successCount} ناجح, ${failCount} فشل`);
+            await fetchInitialData();
+
+        } catch (err) {
+            console.error('Import process failed:', err);
+            alert('فشل في معالجة الملف');
+        } finally {
+            setLoading(false);
+            e.target.value = ''; // Reset input
+        }
+    };
+
+    const handleDelete = async (id: any) => {
+        if (!confirm('هل أنت متأكد من حذف هذه القطعة؟')) return;
+        try {
+            const { error } = await supabase.from('spare_parts').delete().eq('id', id);
+            if (error) throw error;
+            await logActivity('DELETE', 'PART', { id });
+            fetchInitialData();
+        } catch (error) {
+            console.error('Error deleting part:', error);
+            alert('فشل الحذف');
         }
     };
 
@@ -160,13 +383,34 @@ const InventoryList = () => {
                         <p className="text-slate-500 text-sm">متابعة قطع الغيار وحركات المخزون</p>
                     </div>
                 </div>
-                <button
-                    onClick={() => setShowAddModal(true)}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
-                >
-                    <Plus className="w-5 h-5" />
-                    إضافة قطعة جديدة
-                </button>
+                <div className="flex gap-2">
+                    <label className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-200 cursor-pointer">
+                        <Upload className="w-5 h-5" />
+                        <span className="hidden sm:inline">استيراد</span>
+                        <input
+                            type="file"
+                            accept=".xlsx, .xls"
+                            className="hidden"
+                            onChange={handleImport}
+                        />
+                    </label>
+
+                    <button
+                        onClick={handleExport}
+                        className="flex items-center gap-2 bg-slate-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-slate-700 transition-colors shadow-lg shadow-slate-200"
+                    >
+                        <Download className="w-5 h-5" />
+                        <span className="hidden sm:inline">تصدير</span>
+                    </button>
+
+                    <button
+                        onClick={openAddModal}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+                    >
+                        <Plus className="w-5 h-5" />
+                        <span className="hidden sm:inline">إضافة قطعة</span>
+                    </button>
+                </div>
             </div>
 
             {/* Stats Cards */}
@@ -222,7 +466,7 @@ const InventoryList = () => {
             </div>
 
             {/* Inventory Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px]">
                 <div className="overflow-x-auto">
                     <table className="w-full text-right">
                         <thead className="bg-slate-50 border-b border-slate-100">
@@ -261,14 +505,19 @@ const InventoryList = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold">
-                                            {categories.find(c => c.id === part.category_id)?.name_ar || 'عام'}
-                                        </span>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold w-fit">
+                                                {categories.find(c => c.id === part.category_id)?.name_ar || 'عام'}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
                                             <span className={`font-bold ${part.quantity <= part.min_threshold ? 'text-red-600' : 'text-slate-700'}`}>
                                                 {part.quantity}
+                                            </span>
+                                            <span className="text-xs text-slate-400 font-bold">
+                                                {part.unit_types?.name_ar || 'وحدة'}
                                             </span>
                                             {part.quantity <= part.min_threshold && (
                                                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title="مخزون منخفض"></span>
@@ -281,6 +530,20 @@ const InventoryList = () => {
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <button
+                                                onClick={() => openHistory(part)}
+                                                className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                                                title="سجل الحركات"
+                                            >
+                                                <History className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => openEditModal(part)}
+                                                className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                                                title="تعديل"
+                                            >
+                                                <Edit className="w-5 h-5" />
+                                            </button>
+                                            <button
                                                 onClick={() => {
                                                     setSelectedPart(part);
                                                     setShowRestockModal(true);
@@ -290,8 +553,12 @@ const InventoryList = () => {
                                             >
                                                 <TrendingUp className="w-5 h-5" />
                                             </button>
-                                            <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
-                                                <History className="w-5 h-5" />
+                                            <button
+                                                onClick={() => handleDelete(part.id)}
+                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                                                title="حذف"
+                                            >
+                                                <Trash2 className="w-5 h-5" />
                                             </button>
                                         </div>
                                     </td>
@@ -302,43 +569,58 @@ const InventoryList = () => {
                 </div>
             </div>
 
-            {/* Add Part Modal */}
-            {showAddModal && (
+            {/* Add/Edit Part Modal */}
+            {showModal && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 p-8 space-y-6">
+                    <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl animate-in zoom-in-95 duration-200 p-8 space-y-6 max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center">
-                            <h2 className="text-xl font-bold text-slate-900">إضافة قطعة جديدة</h2>
-                            <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-full">
-                                <Search className="w-5 h-5 text-slate-400 rotate-45" /> {/* Close Icon */}
+                            <h2 className="text-xl font-bold text-slate-900">
+                                {modalMode === 'add' ? 'إضافة قطعة جديدة' : 'تعديل بيانات القطعة'}
+                            </h2>
+                            <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-full">
+                                <X className="w-5 h-5 text-slate-400" />
                             </button>
                         </div>
 
-                        <form onSubmit={handleAddPart} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">اسم القطعة</label>
-                                <input
-                                    required
-                                    type="text"
-                                    value={newPart.name_ar}
-                                    onChange={e => setNewPart({ ...newPart, name_ar: e.target.value })}
-                                    className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">اسم القطعة</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={formData.name_ar}
+                                        onChange={e => setFormData({ ...formData, name_ar: e.target.value })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                                    />
+                                </div>
+
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">رقم القطعة (SKU)</label>
                                     <input
                                         type="text"
-                                        value={newPart.part_number}
-                                        onChange={e => setNewPart({ ...newPart, part_number: e.target.value })}
+                                        value={formData.part_number}
+                                        onChange={e => setFormData({ ...formData, part_number: e.target.value })}
                                         className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium font-mono"
                                     />
                                 </div>
+
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">موقع التخزين (الرف/الدرج)</label>
+                                    <input
+                                        type="text"
+                                        value={formData.location}
+                                        onChange={e => setFormData({ ...formData, location: e.target.value })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                                        placeholder="مثال: A-12"
+                                    />
+                                </div>
+
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">التصنيف</label>
                                     <select
-                                        value={newPart.category_id}
-                                        onChange={e => setNewPart({ ...newPart, category_id: e.target.value })}
+                                        value={formData.category_id}
+                                        onChange={e => setFormData({ ...formData, category_id: e.target.value })}
                                         className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium bg-white"
                                     >
                                         <option value="">عام</option>
@@ -347,16 +629,62 @@ const InventoryList = () => {
                                         ))}
                                     </select>
                                 </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-4">
+
                                 <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">الكمية الأولية</label>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">وحدة القياس</label>
+                                    <select
+                                        value={formData.unit_id}
+                                        onChange={e => setFormData({ ...formData, unit_id: e.target.value })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium bg-white"
+                                    >
+                                        <option value="">اختر الوحدة</option>
+                                        {units.map(u => (
+                                            <option key={u.id} value={u.id}>{u.name_ar}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">الوصف / المواصفات</label>
+                                <textarea
+                                    value={formData.description}
+                                    onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                    className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium h-24 resize-none"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">المورد</label>
+                                    <input
+                                        type="text"
+                                        value={formData.supplier}
+                                        onChange={e => setFormData({ ...formData, supplier: e.target.value })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">الموديلات المتوافقة</label>
+                                    <input
+                                        type="text"
+                                        value={formData.compatible_models}
+                                        onChange={e => setFormData({ ...formData, compatible_models: e.target.value })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                                        placeholder="مثال: HP-200, Canon-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">الكمية</label>
                                     <input
                                         type="number"
                                         min="0"
-                                        value={newPart.quantity}
-                                        onChange={e => setNewPart({ ...newPart, quantity: parseInt(e.target.value) || 0 })}
-                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                                        value={formData.quantity}
+                                        onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium bg-white"
                                     />
                                 </div>
                                 <div>
@@ -364,9 +692,9 @@ const InventoryList = () => {
                                     <input
                                         type="number"
                                         min="0"
-                                        value={newPart.min_threshold}
-                                        onChange={e => setNewPart({ ...newPart, min_threshold: parseInt(e.target.value) || 0 })}
-                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                                        value={formData.min_threshold}
+                                        onChange={e => setFormData({ ...formData, min_threshold: parseInt(e.target.value) || 0 })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium bg-white"
                                     />
                                 </div>
                                 <div>
@@ -374,9 +702,9 @@ const InventoryList = () => {
                                     <input
                                         type="number"
                                         min="0"
-                                        value={newPart.price}
-                                        onChange={e => setNewPart({ ...newPart, price: parseFloat(e.target.value) || 0 })}
-                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                                        value={formData.price}
+                                        onChange={e => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                                        className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium bg-white"
                                     />
                                 </div>
                             </div>
@@ -387,7 +715,7 @@ const InventoryList = () => {
                                 className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex justify-center items-center gap-2"
                             >
                                 {submitting && <Loader2 className="w-5 h-5 animate-spin" />}
-                                حفظ القطعة
+                                {modalMode === 'add' ? 'حفظ القطعة' : 'حفظ التعديلات'}
                             </button>
                         </form>
                     </div>

@@ -1,0 +1,140 @@
+import { createClient } from '@supabase/supabase-js';
+import { readExcelFile } from '../utils/excel-reader';
+import { cleanArabicText, validateRequired } from '../utils/data-cleaner';
+import * as path from 'path';
+
+interface BranchRow {
+    'اسم الفرع'?: string;
+    'Branch Name'?: string;
+    'الفرع'?: string;
+    'المنطقة'?: string;
+    'Area'?: string;
+    'الماركة'?: string;
+    'Brand'?: string;
+    'العنوان'?: string;
+    'Address'?: string;
+    'الموقع'?: string;
+    'Location'?: string;
+    [key: string]: any;
+}
+
+export async function importBranches(dryRun = false): Promise<void> {
+    console.log('\n🏢 Importing Branches...');
+
+    // Create Supabase client here (after env vars are loaded)
+    const supabaseUrl = process.env.VITE_SUPABASE_URL!;
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const filePath = path.join(__dirname, '../../data/branches names and addresses .xlsx');
+
+    try {
+        // First, fetch areas and brands for lookup
+        const { data: areas, error: areasError } = await supabase
+            .from('areas')
+            .select('id, name_ar');
+
+        if (areasError) throw areasError;
+
+        const { data: brands, error: brandsError } = await supabase
+            .from('brands')
+            .select('id, name_ar');
+
+        if (brandsError) throw brandsError;
+
+        // Build lookup maps
+        const areaMap = new Map<string, string>();
+        areas?.forEach((a: any) => areaMap.set(a.name_ar, a.id));
+
+        const brandMap = new Map<string, string>();
+        brands?.forEach((b: any) => brandMap.set(b.name_ar, b.id));
+
+        console.log(`Loaded ${areas?.length || 0} areas and ${brands?.length || 0} brands for lookup`);
+
+        // Read Excel file
+        const rows = readExcelFile(filePath) as BranchRow[];
+        console.log(`Found ${rows.length} rows in Excel file`);
+
+        if (rows.length > 0) {
+            console.log('Sample row:', rows[0]);
+            console.log('Available columns:', Object.keys(rows[0]));
+        }
+
+        const branches: {
+            name_ar: string;
+            area_id: string;
+            brand_id: string | null;
+            location?: string;
+            address?: string;
+        }[] = [];
+
+        const errors: { row: number; error: string }[] = [];
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+
+            try {
+                // Note: 'اسم الفرع ' has a trailing space in the Excel file
+                const branchName = row['اسم الفرع '] || row['Branch Name'] || row['الفرع'] || row['name'];
+                const areaName = row['Zone'] || row['المنطقة'] || row['Area'] || row['area'];
+                const brandName = row['الماركة'] || row['Brand'] || row['brand'];
+                const location = row['الموقع'] || row['Location'] || row['location'];
+                const address = row['العنوان'] || row['Address'] || row['address'];
+
+                const cleanedBranchName = validateRequired(cleanArabicText(branchName), 'Branch Name');
+                const cleanedAreaName = validateRequired(cleanArabicText(areaName), 'Area Name');
+                const cleanedBrandName = cleanArabicText(brandName);
+
+                const areaId = areaMap.get(cleanedAreaName);
+                if (!areaId) {
+                    throw new Error(`Area not found: ${cleanedAreaName}`);
+                }
+
+                let brandId: string | null = null;
+                if (cleanedBrandName) {
+                    brandId = brandMap.get(cleanedBrandName) || null;
+                    if (!brandId) {
+                        console.warn(`   ⚠️  Brand not found for row ${i + 2}: ${cleanedBrandName}`);
+                    }
+                }
+
+                branches.push({
+                    name_ar: cleanedBranchName,
+                    area_id: areaId,
+                    brand_id: brandId,
+                    location: cleanArabicText(location) || undefined,
+                    address: cleanArabicText(address) || undefined
+                });
+
+            } catch (error) {
+                errors.push({
+                    row: i + 2,
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }
+
+        console.log(`✓ Processed ${branches.length} valid branches`);
+
+        if (errors.length > 0) {
+            console.log(`⚠️  ${errors.length} rows had errors:`);
+            errors.slice(0, 10).forEach(e => console.log(`   Row ${e.row}: ${e.error}`));
+        }
+
+        if (!dryRun && branches.length > 0) {
+            const { data, error } = await supabase
+                .from('branches')
+                .upsert(branches, { onConflict: 'name_ar,area_id' });
+
+            if (error) throw error;
+
+            console.log(`✓ Successfully imported ${branches.length} branches`);
+        } else if (dryRun) {
+            console.log('🏃 Dry run - sample branches:', branches.slice(0, 3));
+        }
+
+    } catch (error) {
+        console.error('❌ Error importing branches:', error);
+        throw error;
+    }
+}

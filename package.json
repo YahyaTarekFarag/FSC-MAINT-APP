@@ -1,0 +1,22 @@
+{
+  "name": "maintenance-app",
+  "version": "1.0.0",
+  "scripts": {
+    "migrate": "ts-node --project tsconfig.scripts.json scripts/migrate-data.ts",
+    "migrate:dry-run": "ts-node --project tsconfig.scripts.json scripts/migrate-data.ts --dry-run",
+    "migrate:yes": "ts-node --project tsconfig.scripts.json scripts/migrate-data.ts --yes",
+    "migrate:brands": "ts-node --project tsconfig.scripts.json scripts/migrate-brands-only.ts",
+    "migrate:sectors-areas": "ts-node --project tsconfig.scripts.json scripts/migrate-sectors-areas.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "dotenv": "^16.4.1",
+    "ts-node": "^10.9.2",
+    "xlsx": "^0.18.5"
+  }
+}
