@@ -1,30 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import type { Database } from './lib/supabase';
 import { Loader2 } from 'lucide-react';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
-// Components
+import ReloadPrompt from './components/common/ReloadPrompt';
+import toast, { Toaster } from 'react-hot-toast';
+
+// Eager Components (Core)
 import Login from './pages/Login';
 import DashboardLayout from './layouts/DashboardLayout';
-import AdminLayout from './layouts/AdminLayout';
 import DashboardHome from './pages/dashboard/DashboardHome';
-import SystemSettings from './pages/admin/settings/SystemSettings';
 import NewTicket from './pages/tickets/NewTicket';
 import TicketList from './pages/tickets/TicketList';
 import TicketDetails from './pages/tickets/TicketDetails';
-import BranchList from './pages/admin/branches/BranchList';
-import StaffList from './pages/admin/staff/StaffList';
-import AdminConsole from './pages/admin/AdminConsole';
-import FormBuilder from './pages/admin/settings/FormBuilder';
-import InventoryList from './pages/admin/inventory/InventoryList';
-import ReportsPage from './pages/admin/reports/ReportsPage';
-import OrganizationManager from './pages/admin/structure/OrganizationManager';
-import UserManager from './pages/admin/users/UserManager';
-import DashboardAnalytics from './pages/admin/DashboardAnalytics';
-import MasterDataManager from './pages/admin/settings/MasterDataManager';
-import AuditLogs from './pages/admin/logs/AuditLogs';
+
+// Lazy Components (Admin & Heavy Modules)
+const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
+const DashboardAnalytics = lazy(() => import('./pages/admin/DashboardAnalytics'));
+const AdminConsole = lazy(() => import('./pages/admin/AdminConsole'));
+const SystemSettings = lazy(() => import('./pages/admin/settings/SystemSettings'));
+const BranchList = lazy(() => import('./pages/admin/branches/BranchList'));
+const StaffList = lazy(() => import('./pages/admin/staff/StaffList'));
+const FormBuilder = lazy(() => import('./pages/admin/settings/FormBuilder'));
+const InventoryList = lazy(() => import('./pages/admin/inventory/InventoryList'));
+const ReportsPage = lazy(() => import('./pages/admin/reports/ReportsPage'));
+const OrganizationManager = lazy(() => import('./pages/admin/structure/OrganizationManager'));
+const UserManager = lazy(() => import('./pages/admin/users/UserManager'));
+const MasterDataManager = lazy(() => import('./pages/admin/settings/MasterDataManager'));
+const AuditLogs = lazy(() => import('./pages/admin/logs/AuditLogs'));
+const TechRoster = lazy(() => import('./pages/admin/workforce/TechRoster'));
+const AssignmentManager = lazy(() => import('./pages/admin/settings/AssignmentManager'));
+const FormEditor = lazy(() => import('./pages/admin/settings/FormEditor'));
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -72,7 +81,15 @@ function App() {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setSession(null);
+      setProfile(null);
+    } catch (err) {
+      console.error('Sign out error:', err);
+      toast.error('فشل تسجيل الخروج. حاول مرة أخرى.');
+    }
   };
 
   if (loading) {
@@ -83,60 +100,78 @@ function App() {
     );
   }
 
+
+
+  // ...
+
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public Route */}
-        <Route
-          path="/login"
-          element={session ? <Navigate to="/dashboard" replace /> : <Login />}
-        />
+      <Toaster position="top-center" reverseOrder={false} />
+      <ErrorBoundary>
+        <ReloadPrompt />
+        <Suspense fallback={
+          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+            <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+          </div>
+        }>
+          <Routes>
+            {/* Public Route */}
+            <Route
+              path="/login"
+              element={session ? <Navigate to="/dashboard" replace /> : <Login />}
+            />
 
-        {/* Protected Dashboard Routes */}
-        <Route
-          path="/"
-          element={session ? <DashboardLayout profile={profile} handleSignOut={handleSignOut} /> : <Navigate to="/login" replace />}
-        >
-          <Route index element={<DashboardHome userProfile={profile} />} />
-          <Route path="dashboard" element={<DashboardHome userProfile={profile} />} />
-          <Route path="tickets/new" element={<NewTicket />} />
-          <Route path="tickets" element={<TicketList userProfile={profile} />} />
-          <Route path="tickets/:id" element={<TicketDetails userProfile={profile} />} />
-
-          {/* Admin Routes (Wrapped in AdminLayout) */}
-          {profile?.role === 'admin' && (
-            <Route path="admin" element={<AdminLayout />}>
-              <Route path="dashboard" element={<DashboardAnalytics />} />
-              <Route path="console" element={<AdminConsole />} />
+            {/* Protected Dashboard Routes */}
+            <Route
+              path="/"
+              element={session ? <DashboardLayout profile={profile} handleSignOut={handleSignOut} /> : <Navigate to="/login" replace />}
+            >
+              <Route index element={<DashboardHome userProfile={profile} />} />
+              <Route path="dashboard" element={<DashboardHome userProfile={profile} />} />
+              <Route path="tickets/new" element={<NewTicket userProfile={profile} />} />
               <Route path="tickets" element={<TicketList userProfile={profile} />} />
-              <Route path="inventory" element={<InventoryList />} />
-              <Route path="forms" element={<FormBuilder />} />
-              <Route path="structure" element={<OrganizationManager />} />
-              <Route path="users" element={<UserManager />} />
-              <Route path="analytics" element={<DashboardAnalytics />} />
-              <Route path="logs" element={<AuditLogs />} />
-              <Route path="settings/master-data" element={<MasterDataManager />} />
-              <Route path="settings/system" element={<SystemSettings />} />
+              <Route path="tickets/:id" element={<TicketDetails userProfile={profile} />} />
+
+
+              {/* Admin Routes (Wrapped in AdminLayout) */}
+              {profile?.role === 'admin' && (
+                <Route path="admin" element={<AdminLayout />}>
+                  <Route path="dashboard" element={<DashboardAnalytics />} />
+                  <Route path="console" element={<AdminConsole />} />
+                  <Route path="tickets" element={<TicketList userProfile={profile} />} />
+                  <Route path="workforce/roster" element={<TechRoster />} />
+                  <Route path="workforce/assignments" element={<AssignmentManager />} />
+                  <Route path="inventory" element={<InventoryList />} />
+                  <Route path="forms" element={<FormBuilder />} />
+                  <Route path="settings/forms" element={<FormEditor />} />
+                  <Route path="structure" element={<OrganizationManager />} />
+                  <Route path="users" element={<UserManager />} />
+                  <Route path="analytics" element={<DashboardAnalytics />} />
+                  <Route path="logs" element={<AuditLogs />} />
+                  <Route path="settings/master-data" element={<MasterDataManager />} />
+                  <Route path="settings/system" element={<SystemSettings />} />
+                </Route>
+              )}
+
+              {/* Legacy/Direct Access (if needed) or Redirects */}
+              {profile?.role === 'admin' && (
+                <>
+                  <Route path="branches" element={<BranchList />} />
+                  <Route path="staff" element={<StaffList />} />
+                </>
+              )}
+
+              {/* Reports (Admin & Manager) */}
+              {(profile?.role === 'admin' || profile?.role === 'manager') && (
+                <Route path="reports" element={<ReportsPage />} />
+              )}
             </Route>
-          )}
 
-          {/* Legacy/Direct Access (if needed) or Redirects */}
-          {profile?.role === 'admin' && (
-            <>
-              <Route path="branches" element={<BranchList />} />
-              <Route path="staff" element={<StaffList />} />
-            </>
-          )}
-
-          {/* Reports (Admin & Manager) */}
-          {(profile?.role === 'admin' || profile?.role === 'manager') && (
-            <Route path="reports" element={<ReportsPage />} />
-          )}
-        </Route>
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

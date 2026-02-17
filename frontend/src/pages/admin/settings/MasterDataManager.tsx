@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
-    Database, Plus, Trash2, Edit2, Save, X, Settings, Layers, Box
+    Plus, Trash2, Settings, Layers, Box, Loader2
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 type Brand = {
     id: string;
@@ -17,15 +18,20 @@ const MasterDataManager = () => {
 
     // Brand Form
     const [newBrandName, setNewBrandName] = useState('');
-    const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
 
     // Unit Form
     const [units, setUnits] = useState<{ id: number; name_ar: string }[]>([]);
     const [newUnitName, setNewUnitName] = useState('');
 
+    // Settings State (controlled inputs)
+    const [slaThreshold, setSlaThreshold] = useState(24);
+    const [lowStockThreshold, setLowStockThreshold] = useState(5);
+    const [savingSettings, setSavingSettings] = useState(false);
+
     useEffect(() => {
         if (activeTab === 'brands') fetchBrands();
         if (activeTab === 'units') fetchUnits();
+        if (activeTab === 'settings') fetchSettings();
     }, [activeTab]);
 
     const fetchBrands = async () => {
@@ -42,187 +48,222 @@ const MasterDataManager = () => {
         setLoading(false);
     };
 
+    const fetchSettings = async () => {
+        setLoading(true);
+        try {
+            const { data } = await supabase
+                .from('system_config')
+                .select('key, value')
+                .in('key', ['sla_threshold_hours', 'low_stock_threshold']);
+
+            if (data) {
+                for (const item of data) {
+                    if (item.key === 'sla_threshold_hours') setSlaThreshold(Number(item.value) || 24);
+                    if (item.key === 'low_stock_threshold') setLowStockThreshold(Number(item.value) || 5);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching settings:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleAddBrand = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newBrandName.trim()) return;
-
-        try {
-            const { error } = await supabase.from('brands').insert([{ name_ar: newBrandName }]);
-            if (error) throw error;
+        setLoading(true);
+        const { error } = await (supabase.from('brands') as any).insert([{ name_ar: newBrandName.trim() }]);
+        if (error) {
+            toast.error('فشل إضافة العلامة التجارية');
+            console.error(error);
+        } else {
+            toast.success('تمت الإضافة بنجاح');
             setNewBrandName('');
             fetchBrands();
-        } catch (error) {
-            console.error('Error adding brand:', error);
-            alert('فشل إضافة العلامة التجارية');
         }
+        setLoading(false);
     };
 
     const handleDeleteBrand = async (id: string) => {
         if (!confirm('هل أنت متأكد من حذف هذه العلامة التجارية؟')) return;
-        try {
-            const { error } = await supabase.from('brands').delete().eq('id', id);
-            if (error) throw error;
+        setLoading(true);
+        const { error } = await supabase.from('brands').delete().eq('id', id);
+        if (error) {
+            toast.error('فشل حذف العلامة التجارية');
+            console.error(error);
+        } else {
+            toast.success('تم الحذف بنجاح');
             fetchBrands();
-        } catch (error) {
-            console.error('Error deleting brand:', error);
-            alert('فشل الحذف');
         }
+        setLoading(false);
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleAddUnit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newUnitName.trim()) return;
-
-        try {
-            const { error } = await supabase.from('unit_types').insert([{ name_ar: newUnitName }]);
-            if (error) throw error;
+        setLoading(true);
+        const { error } = await (supabase.from('unit_types') as any).insert([{ name_ar: newUnitName.trim() }]);
+        if (error) {
+            toast.error('فشل إضافة الوحدة');
+            console.error(error);
+        } else {
+            toast.success('تمت الإضافة بنجاح');
             setNewUnitName('');
             fetchUnits();
-        } catch (error) {
-            console.error('Error adding unit:', error);
-            alert('فشل إضافة الوحدة');
         }
+        setLoading(false);
     };
 
     const handleDeleteUnit = async (id: number) => {
         if (!confirm('هل أنت متأكد من حذف هذه الوحدة؟')) return;
-        try {
-            const { error } = await supabase.from('unit_types').delete().eq('id', id);
-            if (error) throw error;
+        setLoading(true);
+        const { error } = await supabase.from('unit_types').delete().eq('id', id);
+        if (error) {
+            toast.error('فشل حذف الوحدة');
+            console.error(error);
+        } else {
+            toast.success('تم الحذف بنجاح');
             fetchUnits();
-        } catch (error) {
-            console.error('Error deleting unit:', error);
-            alert('فشل الحذف');
+        }
+        setLoading(false);
+    };
+
+    const handleSaveSettings = async () => {
+        setSavingSettings(true);
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: err1 } = await (supabase.from('system_config') as any).upsert(
+                { key: 'sla_threshold_hours', value: slaThreshold, description: 'الحد الحرج للتذاكر بالساعات' },
+                { onConflict: 'key' }
+            );
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: err2 } = await (supabase.from('system_config') as any).upsert(
+                { key: 'low_stock_threshold', value: lowStockThreshold, description: 'حد تنبيه انخفاض المخزون' },
+                { onConflict: 'key' }
+            );
+
+            if (err1 || err2) {
+                throw new Error(err1?.message || err2?.message);
+            }
+
+            toast.success('تم حفظ إعدادات النظام بنجاح ✅');
+        } catch (err) {
+            console.error('Settings save error:', err);
+            toast.error('فشل في حفظ الإعدادات');
+        } finally {
+            setSavingSettings(false);
         }
     };
 
+    const tabs = [
+        { key: 'brands' as const, label: 'العلامات التجارية', icon: Layers },
+        { key: 'units' as const, label: 'أنواع الوحدات', icon: Box },
+        { key: 'settings' as const, label: 'إعدادات النظام', icon: Settings },
+    ];
+
     return (
-        <div className="min-h-screen bg-slate-50 p-6 lg:p-8 font-sans" dir="rtl">
-            <div className="mb-8">
+        <div className="min-h-screen bg-slate-50 p-6 lg:p-8" dir="rtl">
+            <div className="mb-6">
                 <h1 className="text-2xl font-bold text-slate-900">إدارة البيانات الأساسية</h1>
-                <p className="text-slate-500 text-sm">التحكم في جداول البحث وإعدادات النظام</p>
+                <p className="text-slate-500 text-sm mt-1">إدارة العلامات التجارية، أنواع الوحدات، وإعدادات النظام</p>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="flex gap-4 mb-6 border-b border-slate-200">
-                <button
-                    onClick={() => setActiveTab('brands')}
-                    className={`pb-3 px-4 text-sm font-bold flex items-center gap-2 transition-colors border-b-2 ${activeTab === 'brands' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Layers className="w-4 h-4" />
-                    العلامات التجارية
-                </button>
-                <button
-                    onClick={() => setActiveTab('units')}
-                    className={`pb-3 px-4 text-sm font-bold flex items-center gap-2 transition-colors border-b-2 ${activeTab === 'units' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Box className="w-4 h-4" />
-                    وحدات القياس
-                </button>
-                <button
-                    onClick={() => setActiveTab('settings')}
-                    className={`pb-3 px-4 text-sm font-bold flex items-center gap-2 transition-colors border-b-2 ${activeTab === 'settings' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Settings className="w-4 h-4" />
-                    إعدادات النظام
-                </button>
+            {/* Tabs */}
+            <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl border border-slate-100 w-fit">
+                {tabs.map(tab => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${activeTab === tab.key ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                        <tab.icon className="w-4 h-4" />
+                        {tab.label}
+                    </button>
+                ))}
             </div>
 
-            {/* Content Area */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 min-h-[400px]">
-
-                {/* Brands Manager */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                {/* Brands Tab */}
                 {activeTab === 'brands' && (
-                    <div className="max-w-2xl">
-                        <form onSubmit={handleAddBrand} className="flex gap-3 mb-6">
-                            <input
-                                type="text"
-                                placeholder="اسم العلامة التجارية الجديدة..."
-                                value={newBrandName}
-                                onChange={e => setNewBrandName(e.target.value)}
-                                className="flex-1 p-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none"
-                            />
-                            <button
-                                type="submit"
-                                className="bg-blue-600 text-white px-6 rounded-xl font-bold hover:bg-blue-700 flex items-center gap-2"
-                            >
-                                <Plus className="w-5 h-5" />
-                                إضافة
+                    <div className="space-y-4">
+                        <form onSubmit={handleAddBrand} className="flex gap-3 items-end">
+                            <div className="flex-1">
+                                <label className="text-sm font-bold text-slate-700 block mb-1">اسم العلامة التجارية</label>
+                                <input
+                                    value={newBrandName}
+                                    onChange={e => setNewBrandName(e.target.value)}
+                                    className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="مثال: سامسونج"
+                                />
+                            </div>
+                            <button type="submit" disabled={loading} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-blue-500 flex items-center gap-2">
+                                <Plus className="w-4 h-4" /> إضافة
                             </button>
                         </form>
-
-                        <div className="space-y-2">
+                        <div className="divide-y divide-slate-100">
                             {brands.map(brand => (
-                                <div key={brand.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group">
+                                <div key={brand.id} className="flex items-center justify-between py-3 px-2 hover:bg-slate-50 rounded-lg">
                                     <span className="font-bold text-slate-800">{brand.name_ar}</span>
-                                    <button
-                                        onClick={() => handleDeleteBrand(brand.id)}
-                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                    >
+                                    <button onClick={() => handleDeleteBrand(brand.id)} className="text-red-500 hover:text-red-700 p-1">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
                             ))}
-                            {brands.length === 0 && !loading && (
-                                <div className="text-center p-8 text-slate-400">لا توجد علامات تجارية مضافة</div>
-                            )}
                         </div>
                     </div>
                 )}
 
-                {/* Units Manager */}
+                {/* Units Tab */}
                 {activeTab === 'units' && (
-                    <div className="max-w-2xl">
-                        <form onSubmit={handleAddUnit} className="flex gap-3 mb-6">
-                            <input
-                                type="text"
-                                placeholder="اسم وحدة القياس الجديدة..."
-                                value={newUnitName}
-                                onChange={e => setNewUnitName(e.target.value)}
-                                className="flex-1 p-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none"
-                            />
-                            <button
-                                type="submit"
-                                className="bg-purple-600 text-white px-6 rounded-xl font-bold hover:bg-purple-700 flex items-center gap-2"
-                            >
-                                <Plus className="w-5 h-5" />
-                                إضافة
+                    <div className="space-y-4">
+                        <form onSubmit={handleAddUnit} className="flex gap-3 items-end">
+                            <div className="flex-1">
+                                <label className="text-sm font-bold text-slate-700 block mb-1">اسم الوحدة</label>
+                                <input
+                                    value={newUnitName}
+                                    onChange={e => setNewUnitName(e.target.value)}
+                                    className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="مثال: ثلاجة عرض"
+                                />
+                            </div>
+                            <button type="submit" disabled={loading} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-blue-500 flex items-center gap-2">
+                                <Plus className="w-4 h-4" /> إضافة
                             </button>
                         </form>
-
-                        <div className="space-y-2">
+                        <div className="divide-y divide-slate-100">
                             {units.map(unit => (
-                                <div key={unit.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group">
+                                <div key={unit.id} className="flex items-center justify-between py-3 px-2 hover:bg-slate-50 rounded-lg">
                                     <span className="font-bold text-slate-800">{unit.name_ar}</span>
-                                    <button
-                                        onClick={() => handleDeleteUnit(unit.id)}
-                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                    >
+                                    <button onClick={() => handleDeleteUnit(unit.id)} className="text-red-500 hover:text-red-700 p-1">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
                             ))}
-                            {units.length === 0 && !loading && (
-                                <div className="text-center p-8 text-slate-400">لا توجد وحدات قياس مضافة</div>
-                            )}
                         </div>
                     </div>
                 )}
 
-                {/* Settings (Mock) */}
+                {/* Settings Tab (Persistent) */}
                 {activeTab === 'settings' && (
                     <div className="space-y-6 max-w-2xl">
-                        <h3 className="font-bold text-lg text-slate-800 border-b border-slate-100 pb-2">منطق الأولويات</h3>
+                        <h3 className="font-bold text-lg text-slate-800 border-b border-slate-100 pb-2">إعدادات النظام</h3>
+
                         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                             <div>
                                 <div className="font-bold text-slate-900">الحد الحرج للتذاكر</div>
                                 <div className="text-sm text-slate-500">تحويل التذكرة تلقائياً إلى "عاجل" إذا لم يتم البدء بها خلال</div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <input type="number" defaultValue={24} className="w-20 p-2 text-center rounded-lg border border-slate-200" />
+                                <input
+                                    type="number"
+                                    value={slaThreshold}
+                                    onChange={e => setSlaThreshold(Number(e.target.value))}
+                                    min={1}
+                                    className="w-20 p-2 text-center rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
                                 <span className="text-sm font-bold text-slate-600">ساعة</span>
                             </div>
                         </div>
@@ -233,14 +274,31 @@ const MasterDataManager = () => {
                                 <div className="text-sm text-slate-500">إرسال إشعار عندما تقل الكمية عن</div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <input type="number" defaultValue={5} className="w-20 p-2 text-center rounded-lg border border-slate-200" />
+                                <input
+                                    type="number"
+                                    value={lowStockThreshold}
+                                    onChange={e => setLowStockThreshold(Number(e.target.value))}
+                                    min={1}
+                                    className="w-20 p-2 text-center rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
                                 <span className="text-sm font-bold text-slate-600">وحدة</span>
                             </div>
                         </div>
 
                         <div className="pt-4 flex justify-end">
-                            <button className="bg-slate-900 text-white px-6 py-2 rounded-xl font-bold hover:bg-slate-800">
-                                حفظ الإعدادات
+                            <button
+                                onClick={handleSaveSettings}
+                                disabled={savingSettings}
+                                className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-slate-800 transition flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {savingSettings ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        جاري الحفظ...
+                                    </>
+                                ) : (
+                                    'حفظ الإعدادات'
+                                )}
                             </button>
                         </div>
                     </div>

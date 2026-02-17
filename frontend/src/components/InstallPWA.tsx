@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, X } from 'lucide-react';
 
 const InstallPWA: React.FC = () => {

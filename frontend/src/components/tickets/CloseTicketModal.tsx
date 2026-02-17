@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Loader2, Package, Search, Plus, Trash2, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Loader2, Package, Search, Trash2, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { saveClosureOffline } from '../../utils/offlineSync';
+import toast from 'react-hot-toast';
 import DynamicForm from './DynamicForm';
 
 type CloseTicketModalProps = {
@@ -24,17 +26,17 @@ type SelectedPart = SparePart & {
 
 const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryId, onClose, onSuccess }) => {
     const [step, setStep] = useState<1 | 2>(1);
-    const [loading, setLoading] = useState(false);
+    // const [loading, setLoading] = useState(false); // Unused - using submitting instead
     const [submitting, setSubmitting] = useState(false);
 
     // Step 1: Inventory State
     const [parts, setParts] = useState<SparePart[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedParts, setSelectedParts] = useState<SelectedPart[]>([]);
-    const [partsLoading, setPartsLoading] = useState(false);
+    const [, setPartsLoading] = useState(false);
 
     // Step 2: Closing Form State
-    const [formAnswers, setFormAnswers] = useState<Record<string, any>>({});
+    const [formAnswers, setFormAnswers] = useState<Record<number, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
 
     useEffect(() => {
         fetchParts();
@@ -86,6 +88,21 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
     const handleSubmit = async () => {
         setSubmitting(true);
         try {
+            // Offline Check
+            if (!navigator.onLine) {
+                const offlineData = {
+                    selectedParts,
+                    formAnswers,
+                    closedAt: new Date().toISOString(),
+                    repairCost: calculateTotalCost()
+                };
+
+                await saveClosureOffline(ticketId, offlineData);
+                toast.success('لا يوجد اتصال بالإنترنت. تم حفظ البيانات وسيتم إرسالها تلقائياً عند عودة الاتصال 📡');
+                onSuccess(); // Close modal and simulate success
+                return;
+            }
+
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No user found');
 
@@ -132,10 +149,11 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
 
             if (updateError) throw updateError;
 
+            toast.success('تم إغلاق البلاغ بنجاح');
             onSuccess();
         } catch (err) {
             console.error('Error closing ticket:', err);
-            alert('حدث خطأ أثناء إغلاق البلاغ. الرجاء المحاولة مرة أخرى.');
+            toast.error('حدث خطأ أثناء إغلاق البلاغ. الرجاء المحاولة مرة أخرى.');
         } finally {
             setSubmitting(false);
         }

@@ -41,7 +41,10 @@ export const useDashboardStats = (userProfile: Profile | null): DashboardStats =
     });
 
     const fetchStats = useCallback(async () => {
-        if (!userProfile) return;
+        if (!userProfile) {
+            setStats(prev => ({ ...prev, loading: false }));
+            return;
+        }
 
         try {
             setStats(prev => ({ ...prev, loading: true }));

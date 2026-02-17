@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Search, Filter, AlertTriangle, Package, History, TrendingUp, X, Edit, Loader2, Upload, Download, ArrowRight, Trash2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
@@ -47,9 +47,9 @@ const InventoryList = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-    const [showHistoryModal, setShowHistoryModal] = useState(false);
-    const [historyData, setHistoryData] = useState<any[]>([]);
-    const [historyLoading, setHistoryLoading] = useState(false);
+    const [_showHistoryModal, setShowHistoryModal] = useState(false);
+    const [_historyData, setHistoryData] = useState<unknown[]>([]);
+    const [_historyLoading, setHistoryLoading] = useState(false);
 
     // Restock / Modal State
     const [showRestockModal, setShowRestockModal] = useState(false);
@@ -349,7 +349,7 @@ const InventoryList = () => {
         }
     };
 
-    const handleDelete = async (id: any) => {
+    const handleDelete = async (id: number) => {
         if (!confirm('هل أنت متأكد من حذف هذه القطعة؟')) return;
         try {
             const { error } = await supabase.from('spare_parts').delete().eq('id', id);

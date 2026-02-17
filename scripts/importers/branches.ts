@@ -23,7 +23,7 @@ export async function importBranches(dryRun = false): Promise<void> {
 
     // Create Supabase client here (after env vars are loaded)
     const supabaseUrl = process.env.VITE_SUPABASE_URL!;
-    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY!;
+    const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const filePath = path.join(__dirname, '../../data/branches names and addresses .xlsx');
@@ -124,7 +124,7 @@ export async function importBranches(dryRun = false): Promise<void> {
         if (!dryRun && branches.length > 0) {
             const { data, error } = await supabase
                 .from('branches')
-                .upsert(branches, { onConflict: 'name_ar,area_id' });
+                .upsert(branches, { onConflict: 'name_ar' });
 
             if (error) throw error;
 

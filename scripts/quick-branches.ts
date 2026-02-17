@@ -3,94 +3,145 @@ import { readExcelFile } from './utils/excel-reader';
 import { cleanArabicText } from './utils/data-cleaner';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { v4 as uuidv4 } from 'uuid'; // Ensure uuid is available (or use helper)
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../frontend/.env.migration') });
 
 // Setup Supabase
 const supabaseUrl = process.env.VITE_SUPABASE_URL!;
-const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY!;
+const supabaseKey = process.env.VITE_SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function main() {
-    console.log('🚀 Quick Import: Zones as Sectors & Branches');
+    console.log('🚀 Quick Import: Branches (with Auto-Hierarchy)');
 
-    // 1. Read Branches File
+    // 1. Get Default Brand (B. Laban)
+    // We need a brand ID for the branches.
+    let brandId: string | null = null;
+    const { data: brands } = await supabase.from('brands').select('id').eq('name_ar', 'بلبن').limit(1);
+    if (brands && brands.length > 0) {
+        brandId = brands[0].id;
+    } else {
+        // Create if not exists
+        const { data: newBrand } = await supabase.from('brands').insert({ name_ar: 'بلبن' }).select('id').single();
+        if (newBrand) brandId = newBrand.id;
+    }
+    console.log(`Using Brand ID: ${brandId}`);
+
+    if (!brandId) {
+        console.error('❌ Could not find or create brand "بلبن". Aborting.');
+        return;
+    }
+
+    // 2. Read Branches File
     const filePath = path.join(process.cwd(), 'data', 'branches names and addresses .xlsx');
     const rows = readExcelFile(filePath);
 
-    console.log(`Found ${rows.length} branches`);
+    console.log(`Found ${rows.length} branches to process`);
 
-    // 2. Extract Unique Zones (to specific mapped Sectors)
-    const zoneMap = new Map<string, string>(); // Zone -> SectorId
+    // 3. Process Zones -> Sectors -> Areas
+    // Map: ZoneName -> AreaID
+    const zoneToAreaMap = new Map<string, string>();
+
     const distinctZones = new Set<string>();
-
     rows.forEach(row => {
         const zone = row['Zone'] ? String(row['Zone']).trim() : null;
         if (zone) distinctZones.add(zone);
     });
 
-    console.log(`Found ${distinctZones.size} zones:`, Array.from(distinctZones));
+    console.log(`Found ${distinctZones.size} distinct zones.`);
 
-    // 3. Create Sectors for Zones
     for (const zone of distinctZones) {
-        // Map English Zone to Arabic Name if possible, or just use it
-        let nameAr = zone;
-        if (zone === 'Cairo') nameAr = 'القاهرة';
-        if (zone === 'Alex') nameAr = 'الإسكندرية';
-        if (zone === 'Delta') nameAr = 'الدلتا';
-        if (zone === 'Giza') nameAr = 'الجيزة';
+        // Map English Zone to Arabic Name
+        let sectorNameAr = zone;
+        if (zone === 'Cairo') sectorNameAr = 'القاهرة';
+        if (zone === 'Alex') sectorNameAr = 'الإسكندرية';
+        if (zone === 'Delta') sectorNameAr = 'الدلتا';
+        if (zone === 'Giza') sectorNameAr = 'الجيزة';
+        if (zone === 'Upper Egypt') sectorNameAr = 'الصعيد';
 
-        console.log(`Creating Sector: ${nameAr} (${zone})`);
+        // A. Get or Create Sector
+        let sectorId: string | null = null;
+        const { data: existingSector } = await supabase.from('sectors').select('id').eq('name_ar', sectorNameAr).maybeSingle();
 
-        const { data, error } = await supabase
-            .from('sectors')
-            .upsert({ name_ar: nameAr }, { onConflict: 'name_ar' })
-            .select('id')
-            .single();
-
-        if (error) {
-            console.error(`Error creating sector ${nameAr}:`, error.message);
+        if (existingSector) {
+            sectorId = existingSector.id;
         } else {
-            zoneMap.set(zone, data.id);
+            const { data: newSector, error } = await supabase.from('sectors').insert({ name_ar: sectorNameAr }).select('id').single();
+            if (newSector) sectorId = newSector.id;
+            else console.error(`Error creating sector ${sectorNameAr}:`, error?.message);
+        }
+
+        if (!sectorId) continue;
+
+        // B. Get or Create "General Area" for this Zone
+        // We call it just the sector name (e.g. area "Cairo" in sector "Cairo") or "General"
+        // Let's use the Sector Name as the Area Name for simplicity, as per previous logic assumptions
+        const areaNameAr = sectorNameAr;
+
+        let areaId: string | null = null;
+        const { data: existingArea } = await supabase.from('areas').select('id').eq('name_ar', areaNameAr).eq('sector_id', sectorId).maybeSingle();
+
+        if (existingArea) {
+            areaId = existingArea.id;
+        } else {
+            const { data: newArea, error } = await supabase.from('areas').insert({
+                name_ar: areaNameAr,
+                sector_id: sectorId
+            }).select('id').single();
+
+            if (newArea) {
+                areaId = newArea.id;
+                //   console.log(`   Created Area: ${areaNameAr}`);
+            }
+            else console.error(`   Error creating area ${areaNameAr}:`, error?.message);
+        }
+
+        if (areaId) {
+            zoneToAreaMap.set(zone, areaId);
         }
     }
 
     // 4. Create Branches
+    console.log('Inserting/Updating branches...');
+    let successCount = 0;
+
     for (const row of rows) {
         const zone = row['Zone'] ? String(row['Zone']).trim() : null;
-        const branchName = row['Branch Name'];
-        const branchNameAr = row['اسم الفرع ']; // Note space at end
+        const branchNameAr = row['اسم الفرع '];
         const address = row['العنوان'];
 
-        if (!branchNameAr) continue;
+        if (!branchNameAr || !zone) continue;
 
-        const sectorId = zone ? zoneMap.get(zone) : null;
+        const areaId = zoneToAreaMap.get(zone);
+        if (!areaId) {
+            //   console.warn(`Skipping branch ${branchNameAr}: No area for zone ${zone}`);
+            continue;
+        }
 
-        // Clean name
         const cleanName = cleanArabicText(String(branchNameAr));
 
         const branchData = {
-            name: cleanName,
+            name_ar: cleanName,
             address: address ? String(address) : null,
-            sector_id: sectorId,
-            status: 'active'
+            area_id: areaId,
+            brand_id: brandId
+            // location_lat, location_lng could be parsed if available
         };
-
-        // console.log(`Creating Branch: ${cleanName}`, branchData);
 
         const { error } = await supabase
             .from('branches')
-            .upsert(branchData, { onConflict: 'name' });
+            .upsert(branchData, { onConflict: 'name_ar' });
 
         if (error) {
-            console.log(`❌ Error creating branch ${cleanName}: ${error.message}`);
+            console.error(`❌ Error branch ${cleanName}: ${error.message}`);
         } else {
-            // console.log(`✓ Created/Updated branch: ${cleanName}`);
+            successCount++;
         }
     }
 
-    console.log('✓ Branches import complete');
+    console.log(`✓ Completed. Successfully processed ${successCount} branches.`);
 }
 
 main().catch(console.error);

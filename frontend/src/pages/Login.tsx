@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { LogIn, Lock, User, AlertCircle, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Login: React.FC = () => {
     const [username, setUsername] = useState('');
@@ -16,6 +17,10 @@ const Login: React.FC = () => {
         // Auto-append domain for easy-access users if they just type 123 or 1234
         const email = username.includes('@') ? username : `${username}@system.com`;
 
+
+
+        // ...
+
         try {
             const { error: authError } = await supabase.auth.signInWithPassword({
                 email,
@@ -24,13 +29,16 @@ const Login: React.FC = () => {
 
             if (authError) throw authError;
 
+            toast.success('تم تسجيل الدخول بنجاح');
             // Success is handled by App.tsx session listener
         } catch (err: unknown) {
             const error = err as Error;
             console.error('Login error:', error);
-            setError(error.message === 'Invalid login credentials'
+            const msg = error.message === 'Invalid login credentials'
                 ? 'خطأ في اسم المستخدم أو كلمة المرور'
-                : 'حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
+                : 'حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.';
+            setError(msg);
+            toast.error(msg);
         } finally {
             setLoading(false);
         }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -13,7 +13,10 @@ import {
     Bell,
     LogOut,
     Database,
-    Shield
+    Shield,
+    Briefcase,
+    UserCog,
+    FileInput
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -55,9 +58,12 @@ const AdminLayout = () => {
     const navItems = [
         { path: '/admin/dashboard', icon: LayoutDashboard, label: 'لوحة البيانات' },
         { path: '/admin/tickets', icon: Ticket, label: 'إدارة البلاغات' },
-        { path: '/admin/users', icon: Users, label: 'الموظفين' },
+        { path: '/admin/workforce/roster', icon: Users, label: 'سجل الفنيين' },
+        { path: '/admin/workforce/assignments', icon: Briefcase, label: 'توزيع المهام' },
+        { path: '/admin/users', icon: UserCog, label: 'إدارة المستخدمين' },
         { path: '/admin/inventory', icon: Store, label: 'المخزن' },
         { path: '/admin/structure', icon: Database, label: 'الهيكل التنظيمي' },
+        { path: '/admin/settings/forms', icon: FileInput, label: 'نماذج الإغلاق' },
         { path: '/admin/settings/master-data', icon: Settings, label: 'البيانات الأساسية' },
         { path: '/admin/settings/system', icon: Shield, label: 'إعدادات النظام' },
         { path: '/admin/logs', icon: FileText, label: 'سجلات النشاط' },

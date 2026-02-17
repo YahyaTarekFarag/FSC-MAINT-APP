@@ -1,10 +1,26 @@
 import * as XLSX from 'xlsx';
 
-export const exportToExcel = (data: Record<string, any>[], fileName: string) => {
+interface ExportRow {
+    [key: string]: string | number | boolean | null | undefined;
+}
+
+interface TicketForExport {
+    id: string;
+    title?: string;
+    status: string;
+    priority: string;
+    branch_name?: string;
+    technician_name?: string;
+    repair_cost?: number | null;
+    created_at: string;
+    description?: string | null;
+}
+
+export const exportToExcel = (data: ExportRow[], fileName: string) => {
     // 1. Convert JSON to Worksheet
     const worksheet = XLSX.utils.json_to_sheet(data);
 
-    // 2. Set Column Widths (Optional but good for UX)
+    // 2. Set Column Widths
     const wscols = Object.keys(data[0] || {}).map(() => ({ wch: 20 }));
     worksheet['!cols'] = wscols;
 
@@ -16,10 +32,10 @@ export const exportToExcel = (data: Record<string, any>[], fileName: string) => 
     XLSX.writeFile(workbook, `${fileName}.xlsx`);
 };
 
-export const formatTicketsForExport = (tickets: any[]) => { // Keeping any[] for input flexibility but output is specific
+export const formatTicketsForExport = (tickets: TicketForExport[]) => {
     return tickets.map(t => ({
         'رقم البلاغ': t.id,
-        'العنوان': t.title,
+        'العنوان': t.title || '-',
         'الحالة': t.status,
         'الأولوية': t.priority,
         'الفرع': t.branch_name || '-',

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
-    Clock, Save, RotateCcw, Shield
+    Save, Shield
 } from 'lucide-react';
 
 interface SLA {
@@ -22,7 +22,7 @@ const SLAManager = () => {
 
     const fetchPolicies = async () => {
         setLoading(true);
-        const { data, error } = await supabase
+        const { data } = await supabase
             .from('sla_policies')
             .select('*')
             .order('resolution_hours', { ascending: true });
@@ -31,7 +31,7 @@ const SLAManager = () => {
         setLoading(false);
     };
 
-    const handleUpdate = (id: string, field: keyof SLA, value: any) => {
+    const handleUpdate = (id: string, field: keyof SLA, value: string | number | boolean) => {
         setPolicies(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
     };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     X,
     Loader2,
@@ -64,7 +64,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
         setLoading(true);
 
         try {
-            const updateData: any = {
+            const updateData: Partial<Profile> = {
                 full_name: formData.full_name,
                 role: formData.role,
                 specialization: formData.specialization,
@@ -73,6 +73,7 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
                 assigned_area_id: formData.role === 'technician' ? formData.assigned_area_id : null
             };
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase
                 .from('profiles') as any)
                 .update(updateData)
@@ -80,9 +81,10 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
 
             if (error) throw error;
             onSuccess();
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Error updating profile:', err);
-            alert('خطأ في تحديث بيانات الحساب: ' + err.message);
+            const message = err instanceof Error ? err.message : 'خطأ غير معروف';
+            alert('خطأ في تحديث بيانات الحساب: ' + message);
         } finally {
             setLoading(false);
         }

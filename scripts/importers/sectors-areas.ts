@@ -118,7 +118,7 @@ export async function importSectorsAndAreas(dryRun = false): Promise<void> {
         if (!dryRun && areas.length > 0) {
             const { error } = await supabase
                 .from('areas')
-                .upsert(areas, { onConflict: 'name_ar,sector_id' });
+                .upsert(areas, { onConflict: 'name_ar' });
 
             if (error) throw error;
             console.log(`✓ Imported ${areas.length} areas`);

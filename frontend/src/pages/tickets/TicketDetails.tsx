@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowRight,
@@ -366,6 +366,40 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                     }}
                 />
             )}
+            {/* Floating Action Buttons (Mobile) */}
+            <div className="fixed bottom-6 left-6 flex flex-col gap-3 lg:hidden z-40">
+                {userProfile?.role === 'technician' && ticket.status !== 'closed' && (
+                    <>
+                        {ticket.status === 'open' ? (
+                            <button
+                                onClick={() => updateStatus('in_progress')}
+                                disabled={actionLoading}
+                                className="w-14 h-14 bg-blue-600 rounded-full shadow-lg shadow-blue-300 text-white flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50"
+                            >
+                                {actionLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Play className="w-6 h-6 fill-current" />}
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setShowCloseModal(true)}
+                                className="w-14 h-14 bg-emerald-600 rounded-full shadow-lg shadow-emerald-300 text-white flex items-center justify-center hover:scale-110 transition-transform"
+                            >
+                                <CheckCircle2 className="w-6 h-6" />
+                            </button>
+                        )}
+                    </>
+                )}
+
+                {ticket.branch.google_map_link && (
+                    <a
+                        href={ticket.branch.google_map_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-14 h-14 bg-white rounded-full shadow-lg text-slate-600 flex items-center justify-center hover:scale-110 transition-transform border border-slate-100"
+                    >
+                        <MapPin className="w-6 h-6" />
+                    </a>
+                )}
+            </div>
         </div>
     );
 };

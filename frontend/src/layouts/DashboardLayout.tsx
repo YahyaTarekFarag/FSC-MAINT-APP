@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -20,6 +20,10 @@ import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
 import InstallPWA from '../components/InstallPWA';
 import { useGeoLocation } from '../hooks/useGeoLocation';
+import toast from 'react-hot-toast';
+import { base64ToBlob } from '../utils/imageCompressor';
+import { uploadTicketImage } from '../lib/storage';
+import { syncClosures } from '../utils/offlineSync';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -97,6 +101,89 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
 
     useEffect(() => {
         checkShiftStatus();
+
+        // Offline Sync Listener
+        const handleOnline = () => {
+            toast.success('تم استعادة الاتصال! جاري مزامنة البيانات... 📡');
+            syncClosures(async (item: any) => {
+                const { ticketId, data } = item;
+                const { selectedParts, formAnswers, closedAt, repairCost } = data;
+
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return; // Should not happen if logged in
+
+                // 1. Process Inventory Transactions
+                if (selectedParts && selectedParts.length > 0) {
+                    const transactions = selectedParts.map((part: any) => ({
+                        part_id: part.id,
+                        ticket_id: ticketId,
+                        user_id: user.id,
+                        change_amount: -part.used_quantity,
+                        transaction_type: 'consumption',
+                        notes: 'Synced from offline closure'
+                    }));
+
+                    const { error: txError } = await supabase
+                        .from('inventory_transactions')
+                        .insert(transactions);
+
+                    if (txError) throw txError;
+                }
+
+                // 2.1 Handle Offline Images in Form Data
+                // Iterate through answers, find base64, upload, replace
+                const processedAnswers = { ...formAnswers };
+
+                for (const [key, value] of Object.entries(processedAnswers)) {
+                    if (typeof value === 'string' && value.startsWith('data:image')) {
+                        try {
+                            const blob = await base64ToBlob(value);
+                            const file = new File([blob], `offline_upload_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                            const url = await uploadTicketImage(file);
+                            processedAnswers[key] = url;
+                            console.log(`Uploaded offline image for Q${key}: ${url}`);
+                        } catch (imgError) {
+                            console.error(`Failed to upload offline image for Q${key}`, imgError);
+                            // Maybe keep base64 or fail? Failing entire sync might be safer to prevent data loss.
+                            // But for now let's just log and continue (image might be broken in DB but ticket closed)
+                            // Ideally we should throw to retry later.
+                            throw new Error(`Image upload failed for Q${key}`);
+                        }
+                    }
+                }
+
+                // 2. Fetch existing ticket form data to merge
+                const { data: ticket } = await supabase
+                    .from('tickets')
+                    .select('form_data')
+                    .eq('id', ticketId)
+                    .single();
+
+                const mergedFormData = {
+                    ...(ticket?.form_data || {}),
+                    ...processedAnswers
+                };
+
+                // 3. Update Ticket
+                const { error: updateError } = await supabase
+                    .from('tickets')
+                    .update({
+                        status: 'closed',
+                        closed_at: closedAt,
+                        repair_cost: repairCost,
+                        form_data: mergedFormData
+                    })
+                    .eq('id', ticketId);
+
+                if (updateError) throw updateError;
+
+                toast.success(`تم مزامنة البلاغ #${ticketId.slice(0, 8)} بنجاح ✅`);
+            });
+        };
+
+        window.addEventListener('online', handleOnline);
+        return () => window.removeEventListener('online', handleOnline);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [checkShiftStatus]);
 
     const toggleShift = async () => {
@@ -245,9 +332,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                             {profile?.full_name?.charAt(0) || 'U'}
                         </div>
 
-                        <button className="p-2 text-slate-400 hover:text-blue-600 relative transition-colors">
-                            <Bell className="w-6 h-6" />
-                            <span className="absolute top-2 left-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                        <button
+                            onClick={() => {
+                                if ('Notification' in window) {
+                                    Notification.requestPermission().then(perm => {
+                                        if (perm === 'granted') alert('تم تفعيل الإشعارات بنجاح ✅');
+                                        else alert('تم رفض الإشعارات ❌');
+                                    });
+                                }
+                            }}
+                            className="p-2 text-slate-400 hover:text-blue-600 relative transition-colors group"
+                            title="تفعيل الإشعارات"
+                        >
+                            <Bell className="w-6 h-6 group-hover:animate-swing" />
+                            {'Notification' in window && Notification.permission === 'granted' ? (
+                                <span className="absolute top-2 left-2 w-2 h-2 bg-green-500 rounded-full border-2 border-white"></span>
+                            ) : (
+                                <span className="absolute top-2 left-2 w-2 h-2 bg-slate-300 rounded-full border-2 border-white"></span>
+                            )}
                         </button>
                     </div>
                 </header>

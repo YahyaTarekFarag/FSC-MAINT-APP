@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { uploadTicketImage } from '../../lib/storage';
+import { compressImage, fileToBase64 } from '../../utils/imageCompressor';
+import toast from 'react-hot-toast';
 import {
     Type,
     Hash,
     Camera,
     List,
-    ToggleLeft,
     Loader2,
     CheckCircle2,
     X
@@ -62,13 +63,35 @@ const DynamicForm: React.FC<DynamicFormProps> = ({ categoryId, stage = 'diagnosi
         onChange(newAnswers);
     };
 
+    // ... (component)
+
     const handleFileUpload = async (questionId: number, file: File) => {
+        // File size validation: max 5MB
+        const MAX_SIZE_MB = 5;
+        if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+            toast.error(`حجم الصورة كبير جداً، الحد الأقصى ${MAX_SIZE_MB} ميجا`);
+            return;
+        }
+
         setUploadingState(prev => ({ ...prev, [questionId]: true }));
         try {
-            const url = await uploadTicketImage(file);
+            // 1. Compress
+            const compressedFile = await compressImage(file);
+
+            // 2. Offline Check
+            if (!navigator.onLine) {
+                const base64 = await fileToBase64(compressedFile);
+                handleAnswerChange(questionId, base64);
+                toast.success('تم حفظ الصورة محلياً (وضع الطيران) ✈️');
+                return;
+            }
+
+            // 3. Online Upload
+            const url = await uploadTicketImage(compressedFile);
             handleAnswerChange(questionId, url);
         } catch (err) {
-            alert('فشل رفع الصورة');
+            console.error(err);
+            toast.error('فشل معالجة/رفع الصورة');
         } finally {
             setUploadingState(prev => ({ ...prev, [questionId]: false }));
         }

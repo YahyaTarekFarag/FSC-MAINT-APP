@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
     Save, Shield, AlertTriangle, Clock, Activity, ToggleLeft, ToggleRight, Loader2, Layout
@@ -33,8 +33,8 @@ const SystemSettings = () => {
         setLoading(true);
         const { data } = await supabase.from('system_config').select('*');
         if (data) {
-            const configMap: any = {};
-            data.forEach((row: any) => configMap[row.key] = row.value);
+            const configMap: Record<string, string | number | boolean> = {};
+            data.forEach((row) => configMap[row.key] = row.value);
             setConfig(prev => ({ ...prev, ...configMap }));
         }
         setLoading(false);

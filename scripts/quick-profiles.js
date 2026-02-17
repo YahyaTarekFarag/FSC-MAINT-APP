@@ -38,30 +38,55 @@ function mapRole(arabicRole) {
 async function main() {
     console.log('🚀 Quick Import: Profiles (Team Members)');
 
+    // 1. Fetch Reference Data (Sectors & Areas)
+    console.log('📦 Fetching Sectors and Areas...');
+    const { data: sectors } = await supabase.from('sectors').select('id, name_ar');
+    const { data: areas } = await supabase.from('areas').select('id, name_ar, sector_id');
+
+    // Create maps for quick lookup
+    const sectorMap = new Map((sectors || []).map(s => [cleanArabicText(s.name_ar), s.id]));
+    const areaMap = new Map((areas || []).map(a => [cleanArabicText(a.name_ar), a.id]));
+
+    console.log(`✓ Loaded ${sectorMap.size} sectors and ${areaMap.size} areas.`);
+
+    // 2. Fetch All Existing Users (Page handling)
+    console.log('👥 Fetching Existing Users...');
+    let allUsers = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+        const { data: { users }, error } = await supabase.auth.admin.listUsers({ page: page, perPage: 1000 });
+        if (error || !users || users.length === 0) {
+            hasMore = false;
+        } else {
+            allUsers = [...allUsers, ...users];
+            page++;
+            if (users.length < 1000) hasMore = false;
+        }
+    }
+    const userMap = new Map(allUsers.map(u => [u.email, u.id]));
+    console.log(`✓ Found ${userMap.size} existing users.`);
+
+    // 3. Process Excel
     const filePath = path.join(process.cwd(), 'data', 'maintenance team members.xlsx');
     const workbook = XLSX.readFile(filePath);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-
-    // Read raw data
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    const rows = data.slice(4); // Data starts at row index 4
 
-    // Data starts at row index 4 (row 5 in Excel)
-    // Headers/Title occupy first 4 rows
-    const rows = data.slice(4);
-
-    console.log(`Found ${rows.length} rows to process`);
+    console.log(`Processing ${rows.length} rows from Excel...`);
 
     let successCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
 
     for (const row of rows) {
-        // Indices based on inspection:
-        // 1: Sector, 2: Area, 5: Name, 6: Code, 8: Role
-
+        // Indices: 1: Sector, 2: Area, 5: Name, 6: Code, 8: Role
         const name = row[5];
         const code = row[6];
         const roleAr = row[8];
-        const sectorName = row[1];
-        const areaName = row[2];
+        const sectorNameRaw = row[1];
+        const areaNameRaw = row[2];
 
         if (!name || !code) continue;
 
@@ -70,18 +95,14 @@ async function main() {
         const email = `u${code}@blaban.com`;
         const password = 'password123';
 
-        // 1. Create Auth User
-        // Check if exists first? Or just try create and catch error
-        let userId = null;
+        // Find IDs
+        const sectorId = sectorMap.get(cleanArabicText(sectorNameRaw));
+        const areaId = areaMap.get(cleanArabicText(areaNameRaw));
 
-        // Try getting by email first to avoid error spam
-        const { data: { users } } = await supabase.auth.admin.listUsers();
-        const existingUser = users.find(u => u.email === email);
+        // 1. Get or Create Auth User
+        let userId = userMap.get(email);
 
-        if (existingUser) {
-            userId = existingUser.id;
-            // console.log(`User exists: ${email}`);
-        } else {
+        if (!userId) {
             const { data: newUser, error: authError } = await supabase.auth.admin.createUser({
                 email: email,
                 password: password,
@@ -94,22 +115,19 @@ async function main() {
                 continue;
             }
             userId = newUser.user.id;
-            console.log(`✓ Created Auth User: ${email}`);
+            createdCount++;
         }
 
         if (userId) {
             // 2. Upsert Profile
-            // Need sector/area IDs? 
-            // We could lookup sector/area by name if we wanted to be thorough.
-            // For now, let's just get the profile in with the name and role.
-
             const profileData = {
                 id: userId,
                 full_name: cleanName,
                 role: appRole,
                 specialization: roleAr ? String(roleAr).substring(0, 50) : null,
-                // assigned_sector_id: ... // TODO: Lookup if critical
-                // assigned_area_id: ...
+                assigned_sector_id: sectorId || null,
+                assigned_area_id: areaId || null,
+                status: 'active'
             };
 
             const { error: profileError } = await supabase
@@ -119,12 +137,14 @@ async function main() {
             if (profileError) {
                 console.log(`❌ Profile Error ${cleanName}: ${profileError.message}`);
             } else {
-                successCount++;
+                updatedCount++;
             }
         }
     }
 
-    console.log(`\n✓ Successfully imported ${successCount} profiles`);
+    console.log(`\n🎉 Import Complete!`);
+    console.log(`- Created Users: ${createdCount}`);
+    console.log(`- Updated Profiles: ${updatedCount}`);
 }
 
 main().catch(console.error);

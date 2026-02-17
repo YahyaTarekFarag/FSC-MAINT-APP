@@ -20,9 +20,9 @@ export type Database = {
                 Update: { id?: string; sector_id?: string; name_ar?: string; created_at?: string };
             };
             branches: {
-                Row: { id: string; area_id: string; brand_id: string; name_ar: string; location_lat: number | null; location_lng: number | null; google_map_link: string | null; created_at: string };
-                Insert: { id?: string; area_id: string; brand_id: string; name_ar: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; created_at?: string };
-                Update: { id?: string; area_id?: string; brand_id?: string; name_ar?: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; created_at?: string };
+                Row: { id: string; area_id: string; brand_id: string; name_ar: string; location_lat: number | null; location_lng: number | null; google_map_link: string | null; address: string | null; phone: string | null; created_at: string };
+                Insert: { id?: string; area_id: string; brand_id: string; name_ar: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string };
+                Update: { id?: string; area_id?: string; brand_id?: string; name_ar?: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string };
             };
             profiles: {
                 Row: {
@@ -71,9 +71,65 @@ export type Database = {
                 Update: { id?: string; name_ar?: string; icon?: string | null; is_active?: boolean; created_at?: string };
             };
             category_questions: {
-                Row: { id: number; category_id: string; question_text: string; field_type: string; options: string[] | null; is_required: boolean; stage: 'diagnosis' | 'closing'; order_index: number; created_at: string };
-                Insert: { id?: number; category_id: string; question_text: string; field_type: string; options?: string[] | null; is_required?: boolean; stage?: 'diagnosis' | 'closing'; order_index?: number; created_at?: string };
-                Update: { id?: number; category_id?: string; question_text?: string; field_type?: string; options?: string[] | null; is_required?: boolean; stage?: 'diagnosis' | 'closing'; order_index?: number; created_at?: string };
+                Row: {
+                    id: number;
+                    category_id: string;
+                    question_text: string;
+                    field_type: 'text' | 'number' | 'yes_no' | 'photo' | 'select';
+                    options: string[] | null;
+                    is_required: boolean;
+                    stage: 'diagnosis' | 'closing';
+                    order_index: number;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: number;
+                    category_id: string;
+                    question_text: string;
+                    field_type: 'text' | 'number' | 'yes_no' | 'photo' | 'select';
+                    options?: string[] | null;
+                    is_required?: boolean;
+                    stage?: 'diagnosis' | 'closing';
+                    order_index?: number;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: number;
+                    category_id?: string;
+                    question_text?: string;
+                    field_type?: 'text' | 'number' | 'yes_no' | 'photo' | 'select';
+                    options?: string[] | null;
+                    is_required?: boolean;
+                    stage?: 'diagnosis' | 'closing';
+                    order_index?: number;
+                    created_at?: string;
+                };
+            };
+            sla_policies: {
+                Row: {
+                    id: string;
+                    priority_level: string;
+                    resolution_hours: number;
+                    color_code: string;
+                    is_active: boolean;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    priority_level: string;
+                    resolution_hours?: number;
+                    color_code: string;
+                    is_active?: boolean;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    priority_level?: string;
+                    resolution_hours?: number;
+                    color_code?: string;
+                    is_active?: boolean;
+                    created_at?: string;
+                };
             };
             tickets: {
                 Row: {
@@ -88,7 +144,7 @@ export type Database = {
                     images_url: string[];
                     created_at: string;
                     updated_at: string;
-                    form_data: any;
+                    form_data: Record<string, string | number | boolean | null>;
                     repair_cost: number | null;
                     closed_at: string | null;
                     category_id: string | null;
@@ -109,7 +165,7 @@ export type Database = {
                     images_url?: string[];
                     created_at?: string;
                     updated_at?: string;
-                    form_data?: any;
+                    form_data?: Record<string, string | number | boolean | null>;
                     repair_cost?: number | null;
                     closed_at?: string | null;
                     category_id?: string | null;
@@ -130,7 +186,7 @@ export type Database = {
                     images_url?: string[];
                     created_at?: string;
                     updated_at?: string;
-                    form_data?: any;
+                    form_data?: Record<string, string | number | boolean | null>;
                     repair_cost?: number | null;
                     closed_at?: string | null;
                     category_id?: string | null;
@@ -146,9 +202,9 @@ export type Database = {
                 Update: { id?: number; ticket_id?: string; user_id?: string; content?: string; created_at?: string };
             };
             spare_parts: {
-                Row: { id: number; name_ar: string; part_number: string | null; quantity: number; price: number; minimum_stock: number; created_at: string; updated_at: string };
-                Insert: { id?: number; name_ar: string; part_number?: string | null; quantity?: number; price: number; minimum_stock?: number; created_at?: string; updated_at?: string };
-                Update: { id?: number; name_ar?: string; part_number?: string | null; quantity?: number; price?: number; minimum_stock?: number; created_at?: string; updated_at?: string };
+                Row: { id: number; name_ar: string; part_number: string | null; quantity: number; price: number; minimum_stock: number; min_threshold: number; description: string | null; location: string | null; supplier: string | null; compatible_models: string | null; category_id: string | null; unit_id: number | null; created_at: string; updated_at: string };
+                Insert: { id?: number; name_ar: string; part_number?: string | null; quantity?: number; price: number; minimum_stock?: number; min_threshold?: number; description?: string | null; location?: string | null; supplier?: string | null; compatible_models?: string | null; category_id?: string | null; unit_id?: number | null; created_at?: string; updated_at?: string };
+                Update: { id?: number; name_ar?: string; part_number?: string | null; quantity?: number; price?: number; minimum_stock?: number; min_threshold?: number; description?: string | null; location?: string | null; supplier?: string | null; compatible_models?: string | null; category_id?: string | null; unit_id?: number | null; created_at?: string; updated_at?: string };
             };
             inventory_transactions: {
                 Row: { id: number; part_id: number; ticket_id: string | null; user_id: string; change_amount: number; transaction_type: 'restock' | 'consumption' | 'adjustment' | 'return'; notes: string | null; created_at: string };
@@ -175,22 +231,50 @@ export type Database = {
             system_config: {
                 Row: {
                     key: string;
-                    value: any;
+                    value: string | number | boolean;
                     description: string | null;
                     updated_at: string;
                 };
                 Insert: {
                     key: string;
-                    value?: any;
+                    value?: string | number | boolean;
                     description?: string | null;
                     updated_at?: string;
                 };
                 Update: {
                     key?: string;
-                    value?: any;
+                    value?: string | number | boolean;
                     description?: string | null;
                     updated_at?: string;
                 };
+            };
+            area_tech_assignments: {
+                Row: {
+                    id: string;
+                    area_id: string;
+                    technician_id: string;
+                    assignment_type: 'primary' | 'backup';
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    area_id: string;
+                    technician_id: string;
+                    assignment_type: 'primary' | 'backup';
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    area_id?: string;
+                    technician_id?: string;
+                    assignment_type?: 'primary' | 'backup';
+                    created_at?: string;
+                };
+            };
+            system_logs: {
+                Row: { id: string; user_id: string; action_type: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'OTHER'; entity_name: string; details: Record<string, unknown> | null; created_at: string };
+                Insert: { id?: string; user_id: string; action_type: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'OTHER'; entity_name: string; details?: Record<string, unknown> | null; created_at?: string };
+                Update: { id?: string; user_id?: string; action_type?: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'OTHER'; entity_name?: string; details?: Record<string, unknown> | null; created_at?: string };
             };
         };
     };
