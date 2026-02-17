@@ -10,6 +10,16 @@ import { exportToExcel, formatTicketsForExport } from '../../../utils/exportUtil
 import { formatCurrency } from '../../../utils/helpers';
 
 // Interfaces for better type safety
+interface Branch {
+    id: string;
+    name_ar: string;
+}
+
+interface Technician {
+    id: string;
+    full_name: string;
+}
+
 interface Ticket {
     id: string;
     title: string;
@@ -31,8 +41,8 @@ interface Ticket {
 const ReportsPage = () => {
     const [tickets, setTickets] = useState<Ticket[]>([]); // Used Ticket interface
     const [loading, setLoading] = useState(true);
-    const [branches, setBranches] = useState<any[]>([]);
-    const [technicians, setTechnicians] = useState<any[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [technicians, setTechnicians] = useState<Technician[]>([]);
 
     // Filters
     const [dateRange, setDateRange] = useState('month'); // week, month, year, all
@@ -41,6 +51,7 @@ const ReportsPage = () => {
 
     useEffect(() => {
         fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dateRange, selectedBranch, selectedTech]);
 
     const fetchData = async () => {
@@ -59,7 +70,7 @@ const ReportsPage = () => {
             // Apply Filters
             if (dateRange !== 'all') {
                 const now = new Date();
-                let startDate = new Date();
+                const startDate = new Date();
                 if (dateRange === 'week') startDate.setDate(now.getDate() - 7);
                 if (dateRange === 'month') startDate.setMonth(now.getMonth() - 1);
                 if (dateRange === 'year') startDate.setFullYear(now.getFullYear() - 1);
@@ -72,17 +83,21 @@ const ReportsPage = () => {
             const { data, error } = await query;
             if (error) throw error;
 
-            // Fetch metadata for Dropdowns (only once ideally, but keeping it simple)
+            // Fetch metadata for Dropdowns
             if (branches.length === 0) {
-                const bRes = await supabase.from('branches').select('id, name_ar');
-                if (bRes.data) setBranches(bRes.data);
+                const branchesRes = await supabase.from('branches').select('id, name_ar');
+                if (branchesRes.data) {
+                    setBranches(branchesRes.data as Branch[]);
+                }
 
-                const tRes = await supabase.from('profiles').select('id, full_name').eq('role', 'technician');
-                if (tRes.data) setTechnicians(tRes.data);
+                const techRes = await supabase.from('profiles').select('id, full_name').eq('role', 'technician');
+                if (techRes.data) {
+                    setTechnicians(techRes.data as Technician[]);
+                }
             }
 
             // Process Data
-            const processedData = data?.map(t => ({
+            const processedData = (data || []).map((t: Ticket) => ({
                 ...t,
                 branch_name: t.branches?.name_ar,
                 technician_name: t.profiles?.full_name
@@ -98,7 +113,19 @@ const ReportsPage = () => {
     };
 
     const handleExport = () => {
-        const formatted = formatTicketsForExport(tickets);
+        // Prepare data for export matching TicketForExport interface
+        const exportData = tickets.map(t => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            priority: t.priority,
+            branch_name: t.branch_name,
+            technician_name: t.technician_name,
+            repair_cost: t.repair_cost,
+            created_at: t.created_at,
+            description: t.description
+        }));
+        const formatted = formatTicketsForExport(exportData);
         exportToExcel(formatted, `Maintenance_Report_${new Date().toISOString().split('T')[0]}`);
     };
 
@@ -108,7 +135,7 @@ const ReportsPage = () => {
     const avgCost = completedTickets.length ? totalCost / completedTickets.length : 0;
 
     // Chart Data Preparation: Technician Performance
-    const techPerformance = tickets.reduce((acc: any, t) => {
+    const techPerformance = tickets.reduce((acc: { [key: string]: { name: string, count: number, cost: number } }, t) => {
         const techName = t.technician_name || 'Unassigned';
         if (!acc[techName]) acc[techName] = { name: techName, count: 0, cost: 0 };
         acc[techName].count += 1;
@@ -163,7 +190,7 @@ const ReportsPage = () => {
                     className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-blue-500 font-medium"
                 >
                     <option value="all">جميع الفروع</option>
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name_ar}</option>)}
+                    {branches.map((b: Branch) => <option key={b.id} value={b.id}>{b.name_ar}</option>)}
                 </select>
 
                 <select
@@ -172,7 +199,7 @@ const ReportsPage = () => {
                     className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-blue-500 font-medium"
                 >
                     <option value="all">جميع الفنيين</option>
-                    {technicians.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+                    {technicians.map((t: Technician) => <option key={t.id} value={t.id}>{t.full_name}</option>)}
                 </select>
             </div>
 
@@ -240,7 +267,7 @@ const ReportsPage = () => {
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                     <h3 className="font-bold text-lg text-slate-900 mb-6">أعلى التكاليف حسب الفني</h3>
                     <div className="space-y-4">
-                        {chartData.sort((a: any, b: any) => b.cost - a.cost).slice(0, 5).map((d: any, idx) => (
+                        {chartData.sort((a, b) => (b.cost || 0) - (a.cost || 0)).slice(0, 5).map((d, idx) => (
                             <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
                                 <div className="flex items-center gap-3">
                                     <div className="font-bold text-slate-700">{idx + 1}</div>
@@ -272,7 +299,7 @@ const ReportsPage = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {tickets.slice(0, 10).map(t => (
+                            {tickets.slice(0, 10).map((t: Ticket) => (
                                 <tr key={t.id} className="hover:bg-slate-50">
                                     <td className="p-4 font-mono text-slate-600">#{t.id}</td>
                                     <td className="p-4 font-medium text-slate-900">{t.title}</td>

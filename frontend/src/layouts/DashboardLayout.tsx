@@ -24,6 +24,7 @@ import toast from 'react-hot-toast';
 import { base64ToBlob } from '../utils/imageCompressor';
 import { uploadTicketImage } from '../lib/storage';
 import { syncClosures } from '../utils/offlineSync';
+import NotificationCenter from '../components/common/NotificationCenter';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -107,27 +108,25 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             toast.success('تم استعادة الاتصال! جاري مزامنة البيانات... 📡');
             syncClosures(async (item: any) => {
                 const { ticketId, data } = item;
-                const { selectedParts, formAnswers, closedAt, repairCost } = data;
+                const { selectedParts, formAnswers, closedAt, repairCost, repairDuration } = data;
 
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) return; // Should not happen if logged in
 
-                // 1. Process Inventory Transactions
+                // 1. Process Inventory Transactions (Using RPC for consistency)
                 if (selectedParts && selectedParts.length > 0) {
-                    const transactions = selectedParts.map((part: any) => ({
-                        part_id: part.id,
-                        ticket_id: ticketId,
-                        user_id: user.id,
-                        change_amount: -part.used_quantity,
-                        transaction_type: 'consumption',
-                        notes: 'Synced from offline closure'
+                    const partsPayload = selectedParts.map((p: any) => ({
+                        part_id: p.id,
+                        quantity: p.used_quantity
                     }));
 
-                    const { error: txError } = await supabase
-                        .from('inventory_transactions')
-                        .insert(transactions);
+                    const { error: rpcError } = await supabase.rpc('consume_parts', {
+                        p_ticket_id: ticketId,
+                        p_user_id: user.id,
+                        p_parts: partsPayload
+                    });
 
-                    if (txError) throw txError;
+                    if (rpcError) throw rpcError;
                 }
 
                 // 2.1 Handle Offline Images in Form Data
@@ -171,6 +170,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                         status: 'closed',
                         closed_at: closedAt,
                         repair_cost: repairCost,
+                        repair_duration: repairDuration,
                         form_data: mergedFormData
                     })
                     .eq('id', ticketId);
@@ -332,25 +332,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                             {profile?.full_name?.charAt(0) || 'U'}
                         </div>
 
-                        <button
-                            onClick={() => {
-                                if ('Notification' in window) {
-                                    Notification.requestPermission().then(perm => {
-                                        if (perm === 'granted') alert('تم تفعيل الإشعارات بنجاح ✅');
-                                        else alert('تم رفض الإشعارات ❌');
-                                    });
-                                }
-                            }}
-                            className="p-2 text-slate-400 hover:text-blue-600 relative transition-colors group"
-                            title="تفعيل الإشعارات"
-                        >
-                            <Bell className="w-6 h-6 group-hover:animate-swing" />
-                            {'Notification' in window && Notification.permission === 'granted' ? (
-                                <span className="absolute top-2 left-2 w-2 h-2 bg-green-500 rounded-full border-2 border-white"></span>
-                            ) : (
-                                <span className="absolute top-2 left-2 w-2 h-2 bg-slate-300 rounded-full border-2 border-white"></span>
-                            )}
-                        </button>
+                        {profile && <NotificationCenter userId={profile.id} />}
                     </div>
                 </header>
 

@@ -13,13 +13,19 @@ import {
     Image as ImageIcon,
     Loader2,
     User,
-    Activity
+    Activity,
+    History,
+    Clock
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/supabase';
 import TicketComments from '../../components/tickets/TicketComments';
 import CloseTicketModal from '../../components/tickets/CloseTicketModal';
+import AssetHistoryDrawer from '../../components/tickets/AssetHistoryDrawer';
+import TechnicianRecommendation from '../../components/tickets/TechnicianRecommendation';
+import TechnicianMap from '../../pages/admin/users/TechnicianMap';
 import { useGeoLocation } from '../../hooks/useGeoLocation';
+import { X } from 'lucide-react';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     branch: Database['public']['Tables']['branches']['Row'];
@@ -28,10 +34,7 @@ type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     technician?: { full_name: string | null };
 };
 
-type TechnicianProfile = {
-    id: string;
-    full_name: string | null;
-};
+
 
 type Question = {
     id: number;
@@ -51,10 +54,12 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [showCloseModal, setShowCloseModal] = useState(false);
+    const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+    const [showDispatchMap, setShowDispatchMap] = useState(false);
     const { getCoordinates } = useGeoLocation();
 
     // Assignment State
-    const [technicians, setTechnicians] = useState<TechnicianProfile[]>([]);
+    // Assignment State
     const [selectedTech, setSelectedTech] = useState<string>('');
     const [isAssigning, setIsAssigning] = useState(false);
 
@@ -102,21 +107,6 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
     useEffect(() => {
         fetchTicketDetails();
     }, [fetchTicketDetails]);
-
-    // Fetch technicians for dropdown (Admin/Manager only)
-    useEffect(() => {
-        if (userProfile?.role === 'admin' || userProfile?.role === 'manager') {
-            const fetchTechs = async () => {
-                const { data } = await supabase
-                    .from('profiles')
-                    .select('id, full_name')
-                    .eq('role', 'technician')
-                    .eq('status', 'active');
-                if (data) setTechnicians(data);
-            };
-            fetchTechs();
-        }
-    }, [userProfile]);
 
     const handleAssignTechnician = async () => {
         if (!ticket || !selectedTech) return;
@@ -240,31 +230,42 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                     </div>
                 </div>
 
-                {/* Quick Actions (Technician) */}
-                {userProfile?.role === 'technician' && ticket.status !== 'closed' && (
-                    <div className="flex items-center gap-3">
-                        {ticket.status === 'open' && (
-                            <button
-                                disabled={actionLoading}
-                                onClick={() => updateStatus('in_progress')}
-                                className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50"
-                            >
-                                {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
-                                بدء العمل
-                            </button>
-                        )}
-                        {ticket.status === 'in_progress' && (
-                            <button
-                                disabled={actionLoading}
-                                onClick={() => setShowCloseModal(true)}
-                                className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50"
-                            >
-                                {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-                                إغلاق البلاغ
-                            </button>
-                        )}
-                    </div>
-                )}
+                {/* Quick Actions (Technician) & History */}
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setShowHistoryDrawer(true)}
+                        className="h-14 md:h-auto bg-white text-slate-600 px-6 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all border border-slate-200 shadow-sm"
+                        title="سجل الجهاز"
+                    >
+                        <History className="w-5 h-5 text-purple-600" />
+                        <span className="hidden md:inline">سجل الجهاز</span>
+                    </button>
+
+                    {userProfile?.role === 'technician' && ticket.status !== 'closed' && (
+                        <>
+                            {ticket.status === 'open' && (
+                                <button
+                                    disabled={actionLoading}
+                                    onClick={() => updateStatus('in_progress')}
+                                    className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50"
+                                >
+                                    {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+                                    بدء العمل
+                                </button>
+                            )}
+                            {ticket.status === 'in_progress' && (
+                                <button
+                                    disabled={actionLoading}
+                                    onClick={() => setShowCloseModal(true)}
+                                    className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50"
+                                >
+                                    {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                                    إغلاق البلاغ
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -381,6 +382,50 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                         </div>
                     </div>
 
+                    {/* SLA Deadline Card */}
+                    {ticket.due_date && ticket.status !== 'closed' && (
+                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <Clock className="w-5 h-5 text-blue-600" />
+                                الموعد النهائي (SLA)
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-xs text-slate-400 font-bold">الموعد المحدد</span>
+                                    <span className="text-slate-900 font-bold font-mono">
+                                        {new Date(ticket.due_date).toLocaleString('ar-EG', { dateStyle: 'long', timeStyle: 'short' })}
+                                    </span>
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                    {(() => {
+                                        const due = new Date(ticket.due_date);
+                                        const now = new Date();
+                                        const diffMs = due.getTime() - now.getTime();
+                                        const diffHours = diffMs / (1000 * 60 * 60);
+
+                                        if (diffHours < 0) {
+                                            return (
+                                                <div className="flex items-center gap-2 text-red-600 font-bold">
+                                                    <AlertTriangle className="w-5 h-5" />
+                                                    <span>متأخر بـ {Math.abs(Math.round(diffHours))} ساعة</span>
+                                                </div>
+                                            );
+                                        } else {
+                                            return (
+                                                <div className={`flex items-center gap-2 font-bold ${diffHours < 4 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                                    <Clock className="w-5 h-5" />
+                                                    <span>متبقي {Math.floor(diffHours)} ساعة و {Math.round((diffHours % 1) * 60)} دقيقة</span>
+                                                </div>
+                                            );
+                                        }
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Assignment Card (Admin/Manager) */}
                     {(userProfile?.role === 'admin' || userProfile?.role === 'manager') && ticket.status !== 'closed' && (
                         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
@@ -388,27 +433,68 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                                 <User className="w-5 h-5 text-blue-600" />
                                 تعيين فني
                             </h3>
-                            <div className="space-y-3">
-                                <select
-                                    value={selectedTech}
-                                    onChange={(e) => setSelectedTech(e.target.value)}
-                                    className="w-full p-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none"
-                                >
-                                    <option value="">اختر الفني...</option>
-                                    {technicians.map(tech => (
-                                        <option key={tech.id} value={tech.id}>
-                                            {tech.full_name}
-                                        </option>
-                                    ))}
-                                </select>
+
+                            {/* Smart Recommendation */}
+                            <TechnicianRecommendation
+                                branchLat={ticket.branch?.location_lat || null}
+                                branchLng={ticket.branch?.location_lng || null}
+                                selectedTechId={selectedTech}
+                                onSelect={setSelectedTech}
+                            />
+
+                            <button
+                                onClick={() => setShowDispatchMap(true)}
+                                className="w-full bg-blue-50 text-blue-700 py-3 rounded-xl font-bold hover:bg-blue-100 transition-all flex items-center justify-center gap-2 mt-4"
+                            >
+                                <MapPin className="w-4 h-4" />
+                                فتح خريطة التوجيه
+                            </button>
+
+                            <button
+                                onClick={handleAssignTechnician}
+                                disabled={!selectedTech || isAssigning}
+                                className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                            >
+                                {isAssigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                تأكيد التعيين
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Dispatch Map Modal */}
+                    {showDispatchMap && (
+                        <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-5xl h-[85vh] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden animate-in fade-in zoom-in duration-200">
                                 <button
-                                    onClick={handleAssignTechnician}
-                                    disabled={!selectedTech || isAssigning}
-                                    className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => setShowDispatchMap(false)}
+                                    className="absolute top-4 right-4 z-[2010] bg-white text-slate-500 hover:text-red-500 p-2 rounded-full shadow-md transition-colors"
                                 >
-                                    {isAssigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                                    تأكيد التعيين
+                                    <X className="w-6 h-6" />
                                 </button>
+
+                                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white z-[2005]">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">خريطة التوجيه الذكي</h3>
+                                        <p className="text-sm text-slate-500">
+                                            {ticket.branch?.name_ar} ({ticket.branch?.city})
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 bg-slate-50 relative">
+                                    <TechnicianMap
+                                        targetLocation={
+                                            ticket.branch?.location_lat && ticket.branch?.location_lng
+                                                ? {
+                                                    lat: ticket.branch.location_lat,
+                                                    lng: ticket.branch.location_lng,
+                                                    label: ticket.branch.name_ar
+                                                }
+                                                : null
+                                        }
+                                        className="h-full w-full"
+                                    />
+                                </div>
                             </div>
                         </div>
                     )}
@@ -453,6 +539,16 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                         setShowCloseModal(false);
                         fetchTicketDetails();
                     }}
+                />
+            )}
+            {/* Asset History Drawer */}
+            {ticket && (
+                <AssetHistoryDrawer
+                    isOpen={showHistoryDrawer}
+                    onClose={() => setShowHistoryDrawer(false)}
+                    branchId={ticket.branch_id}
+                    categoryId={ticket.fault_category}
+                    currentTicketId={ticket.id}
                 />
             )}
             {/* Floating Action Buttons (Mobile) */}

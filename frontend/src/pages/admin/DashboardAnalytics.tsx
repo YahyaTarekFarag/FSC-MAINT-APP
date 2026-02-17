@@ -1,121 +1,121 @@
 import { useState, useEffect } from 'react';
 import {
-    BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
 import {
-    TrendingUp, TrendingDown, Activity, AlertTriangle,
-    DollarSign, Clock, Package, PieChart as PieIcon, Loader2
+    TrendingUp, Activity, AlertTriangle,
+    DollarSign, Clock, PieChart as PieIcon, Loader2, Users
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316'];
 
 interface DashboardStats {
-    total_spend: number;
-    avg_efficiency_days: number;
-    critical_faults: number;
-    inventory_alerts: number;
+    total_tickets: number;
+    open_tickets: number;
+    in_progress_tickets: number;
+    completed_tickets: number;
+    avg_repair_time: number;
+    total_cost: number;
+    top_faults: { fault_type: string; c: number }[];
+    // Mapped for charts
     fault_distribution: { name: string; value: number }[];
     spending_trend: { name: string; repairs: number; month_date: string }[];
 }
 
+type TechnicianPerformance = {
+    technician_id: string;
+    full_name: string;
+    completed_tickets: number;
+    avg_repair_time: number;
+    total_cost: number;
+};
+
+interface RawDashboardStats {
+    total_tickets: number;
+    open_tickets: number;
+    in_progress_tickets: number;
+    completed_tickets: number;
+    avg_repair_time: number;
+    total_cost: number;
+    top_faults: { fault_type: string; c: number }[];
+}
+
 const DashboardAnalytics = () => {
     const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [techPerformance, setTechPerformance] = useState<TechnicianPerformance[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [period, setPeriod] = useState('30_days');
 
-    useEffect(() => {
-        fetchDashboardStats();
-    }, []);
-
-    const fetchDashboardStats = async () => {
+    const fetchAnalytics = async () => {
         try {
             setLoading(true);
             setError(null);
 
-            // Try RPC first (preferred — server-side aggregation)
-            const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_stats');
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) throw new Error('Not authenticated');
 
-            if (!rpcError && rpcData) {
-                setStats(rpcData as DashboardStats);
-                setLoading(false);
-                return;
-            }
+            const endDate = new Date();
+            const startDate = new Date();
+            if (period === '7_days') startDate.setDate(endDate.getDate() - 7);
+            if (period === '30_days') startDate.setDate(endDate.getDate() - 30);
+            if (period === '90_days') startDate.setDate(endDate.getDate() - 90);
 
-            // Fallback: client-side aggregation if RPC not deployed yet
-            console.warn('RPC not available, using client-side fallback:', rpcError?.message);
-
-            interface FallbackTicket {
-                fault_category: string;
-                repair_cost: number | null;
-                created_at: string;
-                closed_at: string | null;
-                status: string;
-                category_id: string | null;
-            }
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const [ticketsRes, , urgentRes, lowStockRes] = await Promise.all([
-                (supabase.from('tickets') as any)
-                    .select('fault_category, repair_cost, created_at, closed_at, status, category_id'),
-                supabase
-                    .from('spare_parts')
-                    .select('quantity, minimum_stock'),
-                supabase
-                    .from('tickets')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('priority', 'urgent')
-                    .neq('status', 'closed'),
-                supabase
-                    .from('spare_parts')
-                    .select('*', { count: 'exact', head: true })
-                    .lt('quantity', 10),
-            ]);
-
-            const tickets: FallbackTicket[] = ticketsRes.data || [];
-
-            // Total Spend
-            const totalSpend = tickets.reduce((sum: number, t: FallbackTicket) => sum + (t.repair_cost || 0), 0);
-
-            // Average Efficiency
-            const closedTickets = tickets.filter((t: FallbackTicket) => t.status === 'closed' && t.closed_at);
-            const avgDays = closedTickets.length > 0
-                ? closedTickets.reduce((sum: number, t: FallbackTicket) => {
-                    const diff = new Date(t.closed_at!).getTime() - new Date(t.created_at).getTime();
-                    return sum + diff / (1000 * 60 * 60 * 24);
-                }, 0) / closedTickets.length
-                : 0;
-
-            // Fault Distribution
-            const catMap = new Map<string, number>();
-            tickets.forEach((t: FallbackTicket) => {
-                const cat = t.fault_category || 'غير مصنف';
-                catMap.set(cat, (catMap.get(cat) || 0) + 1);
+            // 1. Fetch Dashboard Stats (RPC)
+            type StatsCall = (name: 'get_dashboard_stats', args: { current_user_id: string; period_start: string; period_end: string }) => Promise<{ data: RawDashboardStats | null; error: unknown }>;
+            const { data: rpcData, error: rpcError } = await (supabase.rpc as unknown as StatsCall)('get_dashboard_stats', {
+                current_user_id: user.id,
+                period_start: startDate.toISOString(),
+                period_end: endDate.toISOString()
             });
-            const faultDist = Array.from(catMap.entries())
-                .map(([name, value]) => ({ name, value }))
-                .sort((a, b) => b.value - a.value)
-                .slice(0, 8);
 
-            // Monthly Spending
-            const monthMap = new Map<string, number>();
-            closedTickets.forEach((t: FallbackTicket) => {
-                const month = new Date(t.closed_at!).toLocaleDateString('ar-EG', { month: 'long' });
-                monthMap.set(month, (monthMap.get(month) || 0) + (t.repair_cost || 0));
+            if (rpcError) throw rpcError;
+            const rawStats = rpcData as RawDashboardStats;
+
+            const faultDist = (rawStats.top_faults || []).map((f: { fault_type: string; c: number }) => ({
+                name: f.fault_type,
+                value: f.c
+            }));
+
+            // 2. Fetch Spending Trend (New RPC)
+            type TrendCall = (name: 'get_spending_trend', args: { current_user_id: string; period_start: string; period_end: string }) => Promise<{ data: Array<{ name: string; repairs: number }> | null; error: unknown }>;
+            const { data: trendData, error: trendError } = await (supabase.rpc as unknown as TrendCall)('get_spending_trend', {
+                current_user_id: user.id,
+                period_start: startDate.toISOString(),
+                period_end: endDate.toISOString()
             });
-            const spendingTrend = Array.from(monthMap.entries())
-                .map(([name, repairs]) => ({ name, repairs, month_date: name }));
 
+            if (trendError) console.error('Error fetching trend:', trendError);
+            const spendingTrend = (trendData as Array<{ name: string; repairs: number }> || []).map(t => ({
+                name: t.name,
+                repairs: Number(t.repairs || 0),
+                month_date: t.name
+            }));
 
             setStats({
-                total_spend: totalSpend,
-                avg_efficiency_days: Math.round(avgDays * 10) / 10,
-                critical_faults: urgentRes.count || 0,
-                inventory_alerts: lowStockRes.count || 0,
+                total_tickets: rawStats.total_tickets,
+                open_tickets: rawStats.open_tickets,
+                in_progress_tickets: rawStats.in_progress_tickets,
+                completed_tickets: rawStats.completed_tickets,
+                avg_repair_time: rawStats.avg_repair_time,
+                total_cost: rawStats.total_cost,
+                top_faults: rawStats.top_faults,
                 fault_distribution: faultDist,
-                spending_trend: spendingTrend,
+                spending_trend: spendingTrend
             });
+
+            // 3. Fetch Technician Performance (RPC)
+            type TechCall = (name: 'get_technician_performance', args: { period_start: string; period_end: string }) => Promise<{ data: TechnicianPerformance[] | null; error: unknown }>;
+            const { data: techData, error: techError } = await (supabase.rpc as unknown as TechCall)('get_technician_performance', {
+                period_start: startDate.toISOString(),
+                period_end: endDate.toISOString()
+            });
+
+            if (techError) throw techError;
+            setTechPerformance(techData as TechnicianPerformance[] || []);
+
         } catch (err) {
             console.error('Error fetching analytics:', err);
             setError('فشل في تحميل بيانات التحليلات');
@@ -124,31 +124,31 @@ const DashboardAnalytics = () => {
         }
     };
 
-    const KPICard = ({ title, value, icon: Icon, trend, color }: {
+    useEffect(() => {
+        fetchAnalytics();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [period]);
+
+    const KPICard = ({ title, value, icon: Icon, color, subValue }: {
         title: string;
         value: string | number;
         icon: React.ElementType;
-        trend?: number;
         color: string;
+        subValue?: string;
     }) => (
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start mb-4">
                 <div className={`p-3 rounded-xl bg-opacity-10 ${color}`}>
                     <Icon className={`w-6 h-6 ${color.replace('bg-', 'text-')}`} />
                 </div>
-                {trend !== undefined && trend !== 0 && (
-                    <div className={`flex items-center text-sm font-bold ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {trend > 0 ? <TrendingUp className="w-4 h-4 ml-1" /> : <TrendingDown className="w-4 h-4 ml-1" />}
-                        {Math.abs(trend)}%
-                    </div>
-                )}
             </div>
             <h3 className="text-slate-500 text-sm font-bold mb-1">{title}</h3>
             <div className="text-2xl font-black text-slate-900">{value}</div>
+            {subValue && <div className="text-xs text-slate-400 mt-1">{subValue}</div>}
         </div>
     );
 
-    if (loading) {
+    if (loading && !stats) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-50">
                 <div className="text-center">
@@ -165,7 +165,7 @@ const DashboardAnalytics = () => {
                 <div className="text-center text-red-500">
                     <AlertTriangle className="w-10 h-10 mx-auto mb-3" />
                     <p className="font-bold">{error || 'حدث خطأ غير متوقع'}</p>
-                    <button onClick={fetchDashboardStats} className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-blue-500">
+                    <button onClick={fetchAnalytics} className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-blue-500">
                         إعادة المحاولة
                     </button>
                 </div>
@@ -175,36 +175,49 @@ const DashboardAnalytics = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 p-6 lg:p-8 font-sans" dir="rtl">
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold text-slate-900">لوحة التحليلات التنفيذية</h1>
-                <p className="text-slate-500 text-sm">بيانات حية من قاعدة البيانات — آخر تحديث: الآن</p>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900">لوحة التحليلات التنفيذية</h1>
+                    <p className="text-slate-500 text-sm">نظرة شاملة على أداء الصيانة والفنيين</p>
+                </div>
+
+                <select
+                    value={period}
+                    onChange={(e) => setPeriod(e.target.value)}
+                    className="bg-white border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                    <option value="7_days">آخر 7 أيام</option>
+                    <option value="30_days">آخر 30 يوم</option>
+                    <option value="90_days">آخر 3 شهور</option>
+                </select>
             </div>
 
             {/* KPI Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <KPICard
-                    title="إجمالي الإنفاق (سنوي)"
-                    value={`${stats.total_spend.toLocaleString()} ج.م`}
-                    icon={DollarSign}
+                    title="إجمالي التذاكر"
+                    value={stats.total_tickets}
+                    subValue={`${stats.completed_tickets} مغلقة | ${stats.in_progress_tickets} جارية`}
+                    icon={Activity}
                     color="text-blue-600 bg-blue-600"
                 />
                 <KPICard
-                    title="كفاءة الإغلاق (متوسط)"
-                    value={`${stats.avg_efficiency_days} يوم`}
+                    title="متوسط وقت الإصلاح"
+                    value={`${stats.avg_repair_time || 0} دقيقة`}
                     icon={Clock}
                     color="text-purple-600 bg-purple-600"
                 />
                 <KPICard
-                    title="أعطال حرجة (مفتوحة)"
-                    value={stats.critical_faults}
-                    icon={AlertTriangle}
-                    color="text-red-600 bg-red-600"
+                    title="إجمالي التكلفة"
+                    value={`${stats.total_cost.toLocaleString()} ج.م`}
+                    icon={DollarSign}
+                    color="text-green-600 bg-green-600"
                 />
                 <KPICard
-                    title="تنبيهات المخزون"
-                    value={stats.inventory_alerts}
-                    icon={Package}
-                    color="text-orange-600 bg-orange-600"
+                    title="تذاكر مفتوحة"
+                    value={stats.open_tickets}
+                    icon={AlertTriangle}
+                    color="text-red-600 bg-red-600"
                 />
             </div>
 
@@ -214,8 +227,8 @@ const DashboardAnalytics = () => {
                 <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                            <Activity className="w-5 h-5 text-blue-500" />
-                            اتجاه تكلفة الإصلاحات الشهرية
+                            <TrendingUp className="w-5 h-5 text-blue-500" />
+                            اتجاه التكاليف
                         </h3>
                     </div>
                     {stats.spending_trend.length > 0 ? (
@@ -228,17 +241,20 @@ const DashboardAnalytics = () => {
                                             <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <XAxis dataKey="name" />
-                                    <YAxis />
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <Tooltip formatter={(value) => [`${Number(value).toLocaleString()} ج.م`, 'تكلفة الإصلاحات']} />
-                                    <Area type="monotone" dataKey="repairs" stroke="#3b82f6" fillOpacity={1} fill="url(#colorRepairs)" name="إصلاحات" />
+                                    <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
+                                    <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        formatter={(value) => [`${Number(value).toLocaleString()} ج.م`, 'التكلفة']}
+                                    />
+                                    <Area type="monotone" dataKey="repairs" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorRepairs)" name="التكلفة" />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
                     ) : (
                         <div className="h-80 flex items-center justify-center text-slate-400 text-sm">
-                            لا توجد بيانات إصلاحات مغلقة بعد
+                            لا توجد بيانات تكاليف للفترة المحددة
                         </div>
                     )}
                 </div>
@@ -248,7 +264,7 @@ const DashboardAnalytics = () => {
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                             <PieIcon className="w-5 h-5 text-purple-500" />
-                            توزيع الأعطال حسب الفئة
+                            توزيع الأعطال
                         </h3>
                     </div>
                     {stats.fault_distribution.length > 0 ? (
@@ -270,55 +286,100 @@ const DashboardAnalytics = () => {
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                         ))}
                                     </Pie>
-                                    <Tooltip />
+                                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                     <Legend />
                                 </PieChart>
                             </ResponsiveContainer>
                         </div>
                     ) : (
                         <div className="h-80 flex items-center justify-center text-slate-400 text-sm">
-                            لا توجد بيانات أعطال بعد
+                            لا توجد بيانات أعطال للفترة المحددة
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Summary Table */}
-            {stats.fault_distribution.length > 0 && (
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                    <h3 className="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2">
-                        <BarChart className="w-5 h-5 text-emerald-500" />
-                        ملخص الأعطال
-                    </h3>
+            {/* Technician Leaderboard & Top Faults */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Technician Leaderboard */}
+                <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-slate-50">
+                        <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                            <Users className="w-5 h-5 text-blue-600" />
+                            آداء الفنيين
+                        </h3>
+                    </div>
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-slate-100">
-                                    <th className="text-right py-3 px-4 font-bold text-slate-600">الفئة</th>
-                                    <th className="text-right py-3 px-4 font-bold text-slate-600">عدد التذاكر</th>
-                                    <th className="text-right py-3 px-4 font-bold text-slate-600">النسبة</th>
+                        <table className="w-full text-right">
+                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+                                <tr>
+                                    <th className="px-6 py-4 font-medium">الفني</th>
+                                    <th className="px-6 py-4 font-medium">المنجز</th>
+                                    <th className="px-6 py-4 font-medium">متوسط الوقت</th>
+                                    <th className="px-6 py-4 font-medium">مؤشر الأداء</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {stats.fault_distribution.map((item, i) => {
-                                    const total = stats.fault_distribution.reduce((s, f) => s + f.value, 0);
-                                    const pct = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0';
-                                    return (
-                                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
-                                            <td className="py-3 px-4 flex items-center gap-2">
-                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                                                {item.name}
-                                            </td>
-                                            <td className="py-3 px-4 font-bold">{item.value}</td>
-                                            <td className="py-3 px-4 text-slate-500">{pct}%</td>
-                                        </tr>
-                                    );
-                                })}
+                            <tbody className="divide-y divide-slate-100">
+                                {techPerformance.map((tech) => (
+                                    <tr key={tech.technician_id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4 font-bold text-slate-700">{tech.full_name}</td>
+                                        <td className="px-6 py-4 text-slate-600">
+                                            <span className="bg-blue-100 text-blue-700 py-1 px-3 rounded-full text-xs font-bold">
+                                                {tech.completed_tickets} تذكرة
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-600 font-mono text-xs">{tech.avg_repair_time || '-'} دقيقة</td>
+                                        <td className="px-6 py-4">
+                                            <div className="w-full bg-slate-100 rounded-full h-2 max-w-[120px]">
+                                                <div
+                                                    className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                                                    style={{ width: `${Math.min(100, (tech.completed_tickets / 10) * 100)}%` }}
+                                                />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {techPerformance.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                                            لا توجد بيانات للأداء في هذه الفترة
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
                 </div>
-            )}
+
+                {/* Top Faults List */}
+                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                    <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-amber-500" />
+                        الأعطال الأكثر تكراراً
+                    </h3>
+                    <div className="space-y-4">
+                        {stats.top_faults.map((fault, idx) => (
+                            <div key={idx} className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                    <span className="font-medium text-slate-700">{fault.fault_type}</span>
+                                    <span className="text-slate-500 font-mono bg-slate-100 px-2 rounded">{fault.c}</span>
+                                </div>
+                                <div className="w-full bg-slate-50 rounded-full h-2">
+                                    <div
+                                        className={`h-2 rounded-full ${idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-orange-500' : 'bg-amber-400'}`}
+                                        style={{ width: `${(fault.c / (stats.total_tickets || 1)) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                        {stats.top_faults.length === 0 && (
+                            <div className="text-center text-slate-400 py-8 text-sm">
+                                لا توجد بيانات أعطال
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

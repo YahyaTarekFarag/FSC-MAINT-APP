@@ -5,6 +5,7 @@ import { saveClosureOffline } from '../../utils/offlineSync';
 import { calculateDistance } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import DynamicForm from './DynamicForm';
+import { differenceInMinutes } from 'date-fns';
 
 type CloseTicketModalProps = {
     ticketId: string;
@@ -27,34 +28,50 @@ type SelectedPart = SparePart & {
 
 const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryId, onClose, onSuccess }) => {
     const [step, setStep] = useState<1 | 2>(1);
-    // const [loading, setLoading] = useState(false); // Unused - using submitting instead
     const [submitting, setSubmitting] = useState(false);
 
-    // Step 1: Inventory State
+    // Inventory State
     const [parts, setParts] = useState<SparePart[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedParts, setSelectedParts] = useState<SelectedPart[]>([]);
-    const [, setPartsLoading] = useState(false);
 
-    // Step 2: Closing Form State
-    const [formAnswers, setFormAnswers] = useState<Record<number, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
+    // Closing Form State
+    const [formAnswers, setFormAnswers] = useState<Record<number, unknown>>({});
 
     // Geofencing State
     const [geofenceValid, setGeofenceValid] = useState(true);
     const [distanceToBranch, setDistanceToBranch] = useState<number | null>(null);
     const [checkingLocation, setCheckingLocation] = useState(true);
 
-    useEffect(() => {
-        fetchParts();
-        checkGeofence();
-    }, []);
+    // Time Tracking
+    const [startedAt, setStartedAt] = useState<string | null>(null);
 
-    const checkGeofence = async () => {
+    useEffect(() => {
+        checkGeofenceAndDetails();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ticketId]);
+
+    const checkGeofenceAndDetails = async () => {
         setCheckingLocation(true);
         try {
-            // 1. Check if Geofencing is Enabled
-            const { data: config } = await supabase.from('system_config').select('value').eq('key', 'geofencing_enabled').single();
-            const isEnabled = config?.value === 'true';
+            // Fetch Ticket Config & Details
+            const [geofencingRes, partsRes] = await Promise.all([
+                supabase.from('system_config').select('value').eq('key', 'geofencing_enabled').single(),
+                supabase.from('spare_parts').select('*').gt('stock_quantity', 0)
+            ]);
+
+            const ticketRes = await supabase.from('tickets').select('branch:branches(location_lat, location_lng), started_at').eq('id', ticketId).single();
+
+            const isEnabled = (geofencingRes.data as unknown as { value: string })?.value === 'true';
+            // Cast for join result
+            const branch = (ticketRes.data as unknown as { branch: { location_lat: number | null; location_lng: number | null } | null })?.branch;
+            const startedAtVal = (ticketRes.data as unknown as { started_at: string | null })?.started_at;
+
+            if (partsRes.data) setParts(partsRes.data);
+
+            if (startedAtVal) {
+                setStartedAt(startedAtVal);
+            }
 
             if (!isEnabled) {
                 setGeofenceValid(true);
@@ -62,32 +79,21 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
                 return;
             }
 
-            // 2. Get Ticket Branch Location
-            const { data: ticket } = await supabase
-                .from('tickets')
-                .select('branch:branches(location_lat, location_lng)')
-                .eq('id', ticketId)
-                .single();
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const branch = ticket?.branch as any;
-
             if (!branch || !branch.location_lat || !branch.location_lng) {
                 console.warn('Branch location not found, skipping geofence');
-                setGeofenceValid(true); // Fail safe
+                setGeofenceValid(true);
                 setCheckingLocation(false);
                 return;
             }
 
-            // 3. Get User Location
             if ('geolocation' in navigator) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const dist = calculateDistance(
                             position.coords.latitude,
                             position.coords.longitude,
-                            branch.location_lat,
-                            branch.location_lng
+                            Number(branch.location_lat),
+                            Number(branch.location_lng)
                         );
                         setDistanceToBranch(Math.round(dist));
                         setGeofenceValid(dist <= 200);
@@ -107,34 +113,18 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
             }
 
         } catch (err) {
-            console.error('Geofence check failed:', err);
-            setGeofenceValid(true); // Fail safe
+            console.error('Check failed:', err);
+            setGeofenceValid(true);
             setCheckingLocation(false);
         }
     };
 
-    const fetchParts = async () => {
-        setPartsLoading(true);
-        try {
-            const { data, error } = await supabase
-                .from('spare_parts')
-                .select('*')
-                .gt('quantity', 0) // Only show parts in stock
-                .order('name_ar');
-
-            if (error) throw error;
-            setParts(data || []);
-        } catch (err) {
-            console.error('Error fetching parts:', err);
-        } finally {
-            setPartsLoading(false);
-        }
-    };
+    // Removed fetchParts as it's now handled in checkGeofenceAndDetails
 
     const handleAddPart = (part: SparePart) => {
         if (selectedParts.find(p => p.id === part.id)) return;
         setSelectedParts([...selectedParts, { ...part, used_quantity: 1 }]);
-        setSearchTerm(''); // Clear search after adding
+        setSearchTerm('');
     };
 
     const handleRemovePart = (partId: number) => {
@@ -143,10 +133,9 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
 
     const updatePartQuantity = (partId: number, qty: number) => {
         if (qty < 1) return;
-        // Check stock limit
         const part = parts.find(p => p.id === partId);
         if (part && qty > part.quantity) {
-            alert(`الكمية المتاحة فقط ${part.quantity}`);
+            toast.error(`الكمية المتاحة فقط ${part.quantity}`);
             return;
         }
         setSelectedParts(prev => prev.map(p => p.id === partId ? { ...p, used_quantity: qty } : p));
@@ -159,62 +148,74 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
     const handleSubmit = async () => {
         setSubmitting(true);
         try {
+            const closedAt = new Date().toISOString();
+
+            // Calculate Duration
+            let repairDuration = 0;
+            if (startedAt) {
+                repairDuration = differenceInMinutes(new Date(closedAt), new Date(startedAt));
+            }
+
             // Offline Check
             if (!navigator.onLine) {
                 const offlineData = {
                     selectedParts,
                     formAnswers,
-                    closedAt: new Date().toISOString(),
-                    repairCost: calculateTotalCost()
+                    closedAt,
+                    repairCost: calculateTotalCost(),
+                    repairDuration,
                 };
 
                 await saveClosureOffline(ticketId, offlineData);
-                toast.success('لا يوجد اتصال بالإنترنت. تم حفظ البيانات وسيتم إرسالها تلقائياً عند عودة الاتصال 📡');
-                onSuccess(); // Close modal and simulate success
+                toast.success('لا يوجد اتصال بالإنترنت. تم حفظ البيانات وسيتم إرسالها تلقائياً 📡');
+                onSuccess();
                 return;
             }
 
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('No user found');
 
-            // 1. Process Inventory Transactions
-            if (selectedParts.length > 0) {
-                const transactions = selectedParts.map(part => ({
-                    part_id: part.id,
-                    ticket_id: ticketId,
-                    user_id: user.id,
-                    change_amount: -part.used_quantity, // Negative for consumption
-                    transaction_type: 'consumption',
-                    notes: 'Used in ticket close'
-                }));
+            // 1. Update stock levels and register parts (RPC)
+            // consume_parts is the correct name from migration
+            type ConsumePartsCall = (
+                name: 'consume_parts',
+                args: { p_ticket_id: string; p_user_id: string; p_parts: { part_id: number; quantity: number }[] }
+            ) => Promise<{ error: unknown }>;
 
-                const { error: txError } = await supabase
-                    .from('inventory_transactions')
-                    .insert(transactions);
+            const { error: rpcError } = await (supabase.rpc as unknown as ConsumePartsCall)(
+                'consume_parts',
+                {
+                    p_ticket_id: ticketId,
+                    p_user_id: user.id,
+                    p_parts: selectedParts.map(p => ({
+                        part_id: p.id,
+                        quantity: p.used_quantity
+                    }))
+                }
+            );
 
-                if (txError) throw txError;
-            }
-
-            // 2. Fetch existing ticket form data to merge
-            const { data: ticket } = await supabase
+            if (rpcError) throw rpcError;
+            // 2. Merge Form Data
+            const ticketRes = await supabase
                 .from('tickets')
-                .select('form_data')
+                .select('*, branch:branches(location_lat, location_lng)')
                 .eq('id', ticketId)
                 .single();
 
             const mergedFormData = {
-                ...(ticket?.form_data || {}),
+                ...((ticketRes.data as unknown as { form_data: Record<string, unknown> })?.form_data || {}),
                 ...formAnswers
             };
 
             // 3. Update Ticket
-            const { error: updateError } = await supabase
-                .from('tickets')
+            const { error: updateError } = await (supabase
+                .from('tickets') as unknown as { update: (data: unknown) => { eq: (col: string, val: string) => Promise<{ error: unknown }> } })
                 .update({
-                    status: 'closed',
-                    closed_at: new Date().toISOString(),
+                    status: 'closed' as const,
+                    closed_at: closedAt,
                     repair_cost: calculateTotalCost(),
-                    form_data: mergedFormData
+                    form_data: mergedFormData,
+                    repair_duration: repairDuration > 0 ? repairDuration : null
                 })
                 .eq('id', ticketId);
 
@@ -224,7 +225,7 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
             onSuccess();
         } catch (err) {
             console.error('Error closing ticket:', err);
-            toast.error('حدث خطأ أثناء إغلاق البلاغ. الرجاء المحاولة مرة أخرى.');
+            toast.error('حدث خطأ أثناء إغلاق البلاغ.');
         } finally {
             setSubmitting(false);
         }
@@ -252,18 +253,32 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
                 </div>
 
                 {/* Geofencing Alert */}
-                {!checkingLocation && !geofenceValid && (
-                    <div className="bg-red-50 border-b border-red-100 p-4 flex items-center gap-3">
-                        <div className="bg-red-100 p-2 rounded-full">
-                            <MapPin className="w-5 h-5 text-red-600" />
+                {!checkingLocation && (
+                    geofenceValid && distanceToBranch !== null ? (
+                        <div className="bg-emerald-50 border-b border-emerald-100 p-4 flex items-center gap-3 animate-in fade-in">
+                            <div className="bg-emerald-100 p-2 rounded-full">
+                                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-emerald-800">أنت في الموقع الصحيح</p>
+                                <p className="text-xs text-emerald-600">
+                                    المسافة الحالية: <span className="font-bold">{distanceToBranch} متر</span> (داخل النطاق)
+                                </p>
+                            </div>
                         </div>
-                        <div className="flex-1">
-                            <p className="text-sm font-bold text-red-800">أنت خارج نطاق الفرع</p>
-                            <p className="text-xs text-red-600">
-                                المسافة الحالية: <span className="font-bold">{distanceToBranch} متر</span> (المسموح: 200 متر)
-                            </p>
+                    ) : !geofenceValid && (
+                        <div className="bg-red-50 border-b border-red-100 p-4 flex items-center gap-3 animate-in fade-in">
+                            <div className="bg-red-100 p-2 rounded-full">
+                                <MapPin className="w-5 h-5 text-red-600" />
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-red-800">أنت خارج نطاق الفرع</p>
+                                <p className="text-xs text-red-600">
+                                    المسافة الحالية: <span className="font-bold">{distanceToBranch} متر</span> (المسموح: 200 متر)
+                                </p>
+                            </div>
                         </div>
-                    </div>
+                    )
                 )}
 
                 {/* Body */}
@@ -379,7 +394,7 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
                 <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-3">
                     {step === 1 ? (
                         <>
-                            <div className="flex-1"></div> {/* Spacer */}
+                            <div className="flex-1"></div>
                             <button
                                 onClick={() => setStep(2)}
                                 className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-slate-800 transition-all flex items-center gap-2"

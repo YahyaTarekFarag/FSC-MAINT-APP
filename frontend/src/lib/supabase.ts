@@ -40,9 +40,9 @@ export type Database = {
                 ];
             };
             branches: {
-                Row: { id: string; area_id: string; brand_id: string; name_ar: string; location_lat: number | null; location_lng: number | null; google_map_link: string | null; address: string | null; phone: string | null; created_at: string };
-                Insert: { id?: string; area_id: string; brand_id: string; name_ar: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string };
-                Update: { id?: string; area_id?: string; brand_id?: string; name_ar?: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string };
+                Row: { id: string; area_id: string; brand_id: string; name_ar: string; location_lat: number | null; location_lng: number | null; google_map_link: string | null; address: string | null; phone: string | null; created_at: string; city: string | null };
+                Insert: { id?: string; area_id: string; brand_id: string; name_ar: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string; city?: string | null };
+                Update: { id?: string; area_id?: string; brand_id?: string; name_ar?: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string; city?: string | null };
                 Relationships: [
                     {
                         foreignKeyName: "branches_area_id_fkey";
@@ -155,6 +155,47 @@ export type Database = {
                     }
                 ];
             };
+            notifications: {
+                Row: {
+                    id: string;
+                    user_id: string;
+                    title: string;
+                    message: string;
+                    type: 'info' | 'warning' | 'success' | 'error';
+                    is_read: boolean;
+                    link: string | null;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    user_id: string;
+                    title: string;
+                    message: string;
+                    type: 'info' | 'warning' | 'success' | 'error';
+                    is_read?: boolean;
+                    link?: string | null;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    user_id?: string;
+                    title?: string;
+                    message?: string;
+                    type?: 'info' | 'warning' | 'success' | 'error';
+                    is_read?: boolean;
+                    link?: string | null;
+                    created_at?: string;
+                };
+                Relationships: [
+                    {
+                        foreignKeyName: "notifications_user_id_fkey";
+                        columns: ["user_id"];
+                        isOneToOne: false;
+                        referencedRelation: "profiles";
+                        referencedColumns: ["id"];
+                    }
+                ];
+            };
             sla_policies: {
                 Row: {
                     id: string;
@@ -206,50 +247,50 @@ export type Database = {
                     location_lat: number | null;
                     location_lng: number | null;
                     started_at: string | null;
+                    repair_duration: number | null;
+                    due_date: string | null;
+                    asset_id: string | null;
                 };
                 Insert: {
                     id?: string;
                     branch_id: string;
                     technician_id?: string | null;
-                    status?: 'open' | 'in_progress' | 'closed';
-                    priority?: 'low' | 'medium' | 'high' | 'urgent';
+                    status?: 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled';
+                    priority?: 'low' | 'medium' | 'high' | 'critical';
                     fault_category: string;
-                    fault_subcategory?: string | null;
-                    description?: string | null;
-                    images_url?: string[];
+                    description: string;
                     created_at?: string;
                     updated_at?: string;
-                    form_data?: Json;
-                    repair_cost?: number | null;
+                    repair_cost?: number;
+                    form_data?: Json | null;
                     closed_at?: string | null;
-                    category_id?: string | null;
-                    start_work_lat?: number | null;
-                    start_work_lng?: number | null;
-                    end_work_lat?: number | null;
-                    end_work_lng?: number | null;
+                    repair_duration?: number | null;
+                    location_lat?: number | null;
+                    location_lng?: number | null;
                     started_at?: string | null;
+                    due_date?: string | null;
+                    asset_id?: string | null;
                 };
+
                 Update: {
                     id?: string;
                     branch_id?: string;
                     technician_id?: string | null;
-                    status?: 'open' | 'in_progress' | 'closed';
-                    priority?: 'low' | 'medium' | 'high' | 'urgent';
+                    status?: 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled';
+                    priority?: 'low' | 'medium' | 'high' | 'critical';
                     fault_category?: string;
-                    fault_subcategory?: string | null;
-                    description?: string | null;
-                    images_url?: string[];
+                    description?: string;
                     created_at?: string;
                     updated_at?: string;
-                    form_data?: Json;
-                    repair_cost?: number | null;
+                    repair_cost?: number;
+                    form_data?: Json | null;
                     closed_at?: string | null;
-                    category_id?: string | null;
-                    start_work_lat?: number | null;
-                    start_work_lng?: number | null;
-                    end_work_lat?: number | null;
-                    end_work_lng?: number | null;
+                    repair_duration?: number | null;
+                    location_lat?: number | null;
+                    location_lng?: number | null;
                     started_at?: string | null;
+                    due_date?: string | null;
+                    asset_id?: string | null;
                 };
                 Relationships: [
                     {
@@ -268,6 +309,7 @@ export type Database = {
                     }
                 ];
             };
+
             ticket_comments: {
                 Row: { id: number; ticket_id: string; user_id: string; content: string; created_at: string };
                 Insert: { id?: number; ticket_id: string; user_id: string; content: string; created_at?: string };
@@ -424,12 +466,176 @@ export type Database = {
                     }
                 ];
             };
+            assets: {
+                Row: {
+                    id: string;
+                    branch_id: string;
+                    name: string;
+                    category_id: string | null;
+                    serial_number: string | null;
+                    model_number: string | null;
+                    purchase_date: string | null;
+                    warranty_expiry: string | null;
+                    status: 'active' | 'maintenance' | 'retired' | 'disposed';
+                    notes: string | null;
+                    qr_code: string | null;
+                    created_at: string;
+                    updated_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    branch_id: string;
+                    name: string;
+                    category_id?: string | null;
+                    serial_number?: string | null;
+                    model_number?: string | null;
+                    purchase_date?: string | null;
+                    warranty_expiry?: string | null;
+                    status?: 'active' | 'maintenance' | 'retired' | 'disposed';
+                    notes?: string | null;
+                    qr_code?: string | null;
+                    created_at?: string;
+                    updated_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    branch_id?: string;
+                    name?: string;
+                    category_id?: string | null;
+                    serial_number?: string | null;
+                    model_number?: string | null;
+                    purchase_date?: string | null;
+                    warranty_expiry?: string | null;
+                    status?: 'active' | 'maintenance' | 'retired' | 'disposed';
+                    notes?: string | null;
+                    qr_code?: string | null;
+                    created_at?: string;
+                    updated_at?: string;
+                };
+                Relationships: [
+                    {
+                        foreignKeyName: "assets_branch_id_fkey";
+                        columns: ["branch_id"];
+                        isOneToOne: false;
+                        referencedRelation: "branches";
+                        referencedColumns: ["id"];
+                    }
+                ];
+            };
+            maintenance_schedules: {
+                Row: {
+                    id: string;
+                    branch_id: string;
+                    title: string;
+                    description: string | null;
+                    frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+                    start_date: string;
+                    next_run: string;
+                    last_run: string | null;
+                    priority: 'low' | 'medium' | 'high' | 'urgent';
+                    is_active: boolean;
+                    created_by: string | null;
+                    created_at: string;
+                    updated_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    branch_id: string;
+                    title: string;
+                    description?: string | null;
+                    frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+                    start_date: string;
+                    next_run: string;
+                    last_run?: string | null;
+                    priority?: 'low' | 'medium' | 'high' | 'urgent';
+                    is_active?: boolean;
+                    created_by?: string | null;
+                    created_at?: string;
+                    updated_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    branch_id?: string;
+                    title?: string;
+                    description?: string | null;
+                    frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+                    start_date?: string;
+                    next_run?: string;
+                    last_run?: string | null;
+                    priority?: 'low' | 'medium' | 'high' | 'urgent';
+                    is_active?: boolean;
+                    created_by?: string | null;
+                    created_at?: string;
+                    updated_at?: string;
+                };
+                Relationships: [
+                    {
+                        foreignKeyName: "maintenance_schedules_branch_id_fkey";
+                        columns: ["branch_id"];
+                        isOneToOne: false;
+                        referencedRelation: "branches";
+                        referencedColumns: ["id"];
+                    }
+                ];
+            };
         };
         Views: {
-            [_ in never]: never;
+            technician_workload_view: {
+                Row: {
+                    technician_id: string;
+                    full_name: string | null;
+                    current_status: 'check_in' | 'check_out';
+                    last_lat: number | null;
+                    last_lng: number | null;
+                    active_tickets: number;
+                };
+            };
         };
         Functions: {
-            [_ in never]: never;
+            consume_parts: {
+                Args: {
+                    p_ticket_id: string;
+                    p_user_id: string;
+                    p_parts: { part_id: number; quantity: number }[];
+                };
+                Returns: boolean;
+            };
+            get_dashboard_stats: {
+                Args: {
+                    current_user_id: string;
+                    period_start?: string;
+                    period_end?: string;
+                };
+                Returns: Json;
+            };
+            get_technician_performance: {
+                Args: {
+                    period_start?: string;
+                    period_end?: string;
+                };
+                Returns: {
+                    technician_id: string;
+                    full_name: string;
+                    completed_tickets: number;
+                    avg_repair_time: number;
+                    total_cost: number;
+                }[];
+            };
+            get_spending_trend: {
+                Args: {
+                    current_user_id: string;
+                    period_start: string;
+                    period_end: string;
+                };
+                Returns: {
+                    name: string;
+                    repairs: number;
+                }[];
+            };
+            generate_scheduled_tickets: {
+                Args: Record<string, never>;
+                Returns: number;
+            };
         };
         Enums: {
             [_ in never]: never;

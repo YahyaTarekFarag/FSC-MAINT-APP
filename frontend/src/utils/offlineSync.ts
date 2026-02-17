@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 
 // ─── Types ──────────────────────────────────────────
 interface ClosureData {
-    [key: string]: string | number | boolean | null | string[];
+    [key: string]: string | number | boolean | null | unknown[] | Record<string, unknown>;
 }
 
 interface OfflineDB extends DBSchema {

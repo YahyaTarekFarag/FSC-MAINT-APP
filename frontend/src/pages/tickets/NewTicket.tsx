@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { calculateDistance } from '../../utils/helpers';
 import {
     Building2,
+    Box,
     AlertTriangle,
     Info,
     Upload,
@@ -83,13 +84,18 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
     const [geofencingEnabled, setGeofencingEnabled] = useState(true);
     const [distanceToBranch, setDistanceToBranch] = useState<number | null>(null);
 
+    const [assets, setAssets] = useState<{ id: string, name: string }[]>([]);
+    const [fetchingAssets, setFetchingAssets] = useState(false);
+
     const [form, setForm] = useState<{
         branch_id: string;
+        asset_id: string;
         fault_category: string;
         priority: 'low' | 'medium' | 'high' | 'urgent';
         description: string;
     }>({
         branch_id: '',
+        asset_id: '',
         fault_category: '', // Stores the name for legacy support
         priority: 'medium',
         description: ''
@@ -99,10 +105,30 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
     const [dynamicData, setDynamicData] = useState<Record<string, unknown>>({});
 
+    // Fetch Assets when Branch Changes
+    useEffect(() => {
+        const fetchAssets = async () => {
+            if (!form.branch_id) {
+                setAssets([]);
+                return;
+            }
+            setFetchingAssets(true);
+            const { data } = await (supabase
+                .from('assets') as any)
+                .select('id, name')
+                .eq('branch_id', form.branch_id)
+                .eq('status', 'active')
+                .order('name');
+            setAssets(data || []);
+            setFetchingAssets(false);
+        };
+        fetchAssets();
+    }, [form.branch_id]);
+
     // Fetch System Config
     useEffect(() => {
         const fetchConfig = async () => {
-            const { data } = await supabase.from('system_config').select('value').eq('key', 'geofencing_enabled').single();
+            const { data } = await (supabase.from('system_config') as any).select('value').eq('key', 'geofencing_enabled').single();
             if (data) {
                 setGeofencingEnabled(data.value === 'true');
             }
@@ -121,8 +147,8 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
         if (location && form.branch_id && branches.length > 0) {
             // Find selected branch to get its coordinates
             const fetchBranchCoords = async () => {
-                const { data: branch } = await supabase
-                    .from('branches')
+                const { data: branch } = await (supabase
+                    .from('branches') as any)
                     .select('location_lat, location_lng')
                     .eq('id', form.branch_id)
                     .single();
@@ -236,8 +262,8 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
         setLoading(true);
         try {
             // Pre-flight check: Verify Branch Exists
-            const { data: branchExists, error: branchError } = await supabase
-                .from('branches')
+            const { data: branchExists, error: branchError } = await (supabase
+                .from('branches') as any)
                 .select('id')
                 .eq('id', form.branch_id)
                 .single();
@@ -264,8 +290,9 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
                 imageUrls.push(url);
             }
 
-            const { error } = await supabase.from('tickets').insert({
+            const { error } = await (supabase.from('tickets') as any).insert({
                 branch_id: form.branch_id,
+                asset_id: form.asset_id || null, // Link Asset
                 fault_category: form.fault_category,
                 priority: form.priority,
                 description: form.description,
@@ -438,6 +465,37 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
                         </div>
                     )}
                 </div>
+
+                {/* Asset Selection (Optional) */}
+                {form.branch_id && (
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                        <label className="flex items-center gap-2 font-bold text-slate-700">
+                            <Box className="w-5 h-5 text-blue-500" />
+                            الأصل المرتبط (اختياري)
+                        </label>
+                        <div className="relative">
+                            <select
+                                value={form.asset_id}
+                                onChange={(e) => setForm({ ...form, asset_id: e.target.value })}
+                                disabled={fetchingAssets}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all disabled:opacity-50 appearance-none disabled:bg-slate-100"
+                            >
+                                <option value="">
+                                    {fetchingAssets ? 'جاري تحميل الأصول...' : 'اختر الأصل (إذا وجد)...'}
+                                </option>
+                                {assets.map(asset => (
+                                    <option key={asset.id} value={asset.id}>{asset.name}</option>
+                                ))}
+                            </select>
+                            {fetchingAssets && (
+                                <div className="absolute left-4 top-3.5">
+                                    <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                                </div>
+                            )}
+                        </div>
+                        <p className="text-xs text-slate-400">ربط البلاغ بأصل معين يسهل تتبع سجل صيانته</p>
+                    </div>
+                )}
 
                 {/* Category & Priority */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

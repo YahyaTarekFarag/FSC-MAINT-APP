@@ -36,6 +36,9 @@ const TechRoster = lazy(() => import('./pages/admin/workforce/TechRoster'));
 const AssignmentManager = lazy(() => import('./pages/admin/settings/AssignmentManager'));
 const FormEditor = lazy(() => import('./pages/admin/settings/FormEditor'));
 const TechnicianMap = lazy(() => import('./pages/admin/users/TechnicianMap'));
+const MaintenanceScheduler = lazy(() => import('./pages/admin/MaintenanceScheduler'));
+const AssetList = lazy(() => import('./pages/admin/assets/AssetList'));
+const AssetDetails = lazy(() => import('./pages/admin/assets/AssetDetails'));
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -156,6 +159,9 @@ function App() {
                   <Route path="logs" element={<AuditLogs />} />
                   <Route path="settings/master-data" element={<MasterDataManager />} />
                   <Route path="settings/system" element={<SystemSettings />} />
+                  <Route path="maintenance/schedules" element={<MaintenanceScheduler />} />
+                  <Route path="assets" element={<AssetList />} />
+                  <Route path="assets/:id" element={<AssetDetails />} />
                 </Route>
               )}
 
