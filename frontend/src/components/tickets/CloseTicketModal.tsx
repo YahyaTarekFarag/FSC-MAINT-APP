@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Loader2, Package, Search, Trash2, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Loader2, Package, Search, Trash2, CheckCircle2, AlertTriangle, ArrowRight, ArrowLeft, MapPin } from 'lucide-react';
 import { saveClosureOffline } from '../../utils/offlineSync';
+import { calculateDistance } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import DynamicForm from './DynamicForm';
 
@@ -38,9 +39,79 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
     // Step 2: Closing Form State
     const [formAnswers, setFormAnswers] = useState<Record<number, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
 
+    // Geofencing State
+    const [geofenceValid, setGeofenceValid] = useState(true);
+    const [distanceToBranch, setDistanceToBranch] = useState<number | null>(null);
+    const [checkingLocation, setCheckingLocation] = useState(true);
+
     useEffect(() => {
         fetchParts();
+        checkGeofence();
     }, []);
+
+    const checkGeofence = async () => {
+        setCheckingLocation(true);
+        try {
+            // 1. Check if Geofencing is Enabled
+            const { data: config } = await supabase.from('system_config').select('value').eq('key', 'geofencing_enabled').single();
+            const isEnabled = config?.value === 'true';
+
+            if (!isEnabled) {
+                setGeofenceValid(true);
+                setCheckingLocation(false);
+                return;
+            }
+
+            // 2. Get Ticket Branch Location
+            const { data: ticket } = await supabase
+                .from('tickets')
+                .select('branch:branches(location_lat, location_lng)')
+                .eq('id', ticketId)
+                .single();
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const branch = ticket?.branch as any;
+
+            if (!branch || !branch.location_lat || !branch.location_lng) {
+                console.warn('Branch location not found, skipping geofence');
+                setGeofenceValid(true); // Fail safe
+                setCheckingLocation(false);
+                return;
+            }
+
+            // 3. Get User Location
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const dist = calculateDistance(
+                            position.coords.latitude,
+                            position.coords.longitude,
+                            branch.location_lat,
+                            branch.location_lng
+                        );
+                        setDistanceToBranch(Math.round(dist));
+                        setGeofenceValid(dist <= 200);
+                        setCheckingLocation(false);
+                    },
+                    (error) => {
+                        console.error('Error getting location:', error);
+                        toast.error('تعذر تحديد موقعك. يرجى تفعيل الـ GPS.');
+                        setGeofenceValid(false);
+                        setCheckingLocation(false);
+                    }
+                );
+            } else {
+                toast.error('جهازك لا يدعم تحديد الموقع');
+                setGeofenceValid(false);
+                setCheckingLocation(false);
+            }
+
+        } catch (err) {
+            console.error('Geofence check failed:', err);
+            setGeofenceValid(true); // Fail safe
+            setCheckingLocation(false);
+        }
+    };
 
     const fetchParts = async () => {
         setPartsLoading(true);
@@ -180,6 +251,21 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
                     </button>
                 </div>
 
+                {/* Geofencing Alert */}
+                {!checkingLocation && !geofenceValid && (
+                    <div className="bg-red-50 border-b border-red-100 p-4 flex items-center gap-3">
+                        <div className="bg-red-100 p-2 rounded-full">
+                            <MapPin className="w-5 h-5 text-red-600" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm font-bold text-red-800">أنت خارج نطاق الفرع</p>
+                            <p className="text-xs text-red-600">
+                                المسافة الحالية: <span className="font-bold">{distanceToBranch} متر</span> (المسموح: 200 متر)
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6">
                     {step === 1 ? (
@@ -314,11 +400,15 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
                             </button>
                             <button
                                 onClick={handleSubmit}
-                                disabled={submitting}
-                                className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2"
+                                disabled={submitting || !geofenceValid}
+                                className={`flex-1 text-white py-3 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2
+                                    ${geofenceValid
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                                        : 'bg-slate-400 cursor-not-allowed shadow-none'}
+                                `}
                             >
                                 {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-                                إغلاق البلاغ نهائياً
+                                {geofenceValid ? 'إغلاق البلاغ نهائياً' : 'يجب التواجد في الفرع'}
                             </button>
                         </>
                     )}

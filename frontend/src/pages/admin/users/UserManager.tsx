@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { adminCreateUser } from '../../../lib/api';
+import { adminCreateUser, adminUpdateUser, adminDeleteUser } from '../../../lib/api';
 import {
-    Search, Filter, Plus, User, Shield, Briefcase,
-    Edit2, Power, CheckCircle, X, Loader2, Save, MapPin, Phone
+    Search, Plus, User, Shield, Briefcase,
+    Edit2, Power, X, Loader2, Save, Phone
 } from 'lucide-react';
 
 type Profile = {
@@ -38,8 +38,19 @@ const UserManager = () => {
     // Modal States
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    type UserFormData = {
+        full_name?: string;
+        email?: string;
+        phone?: string;
+        role?: 'admin' | 'manager' | 'technician';
+        status?: 'active' | 'suspended';
+        assigned_area_id?: string | null;
+        password?: string;
+        branch?: string;
+    };
+
     const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
-    const [formData, setFormData] = useState<any>({});
+    const [formData, setFormData] = useState<UserFormData>({});
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -77,7 +88,7 @@ const UserManager = () => {
         }
     };
 
-    const filterUsers = () => {
+    const filterUsers = useCallback(() => {
         let result = users;
 
         if (searchTerm) {
@@ -93,17 +104,19 @@ const UserManager = () => {
             result = result.filter(u => u.role === roleFilter);
         }
 
-        // Note: Branch filtering would require resolving the user's area to a branch
-        // For now preventing empty filter logic if we don't have direct link yet.
-
         setFilteredUsers(result);
-    };
+    }, [users, searchTerm, roleFilter]);
+
+    useEffect(() => {
+        filterUsers();
+    }, [filterUsers]);
 
     const handleEditClick = (user: Profile) => {
         setSelectedUser(user);
         setFormData({
-            full_name: user.full_name,
-            phone: user.phone,
+            full_name: user.full_name || undefined,
+            email: user.email || undefined,
+            phone: user.phone || undefined,
             role: user.role,
             status: user.status || 'active',
             assigned_area_id: user.assigned_area_id
@@ -116,10 +129,12 @@ const UserManager = () => {
         if (!selectedUser) return;
         setSaving(true);
         try {
-            const { error } = await supabase
+            // 1. Update Profile Data
+            const { error: profileError } = await supabase
                 .from('profiles')
                 .update({
                     full_name: formData.full_name,
+                    email: formData.email, // Also update in profile
                     phone: formData.phone,
                     role: formData.role,
                     status: formData.status,
@@ -127,12 +142,58 @@ const UserManager = () => {
                 })
                 .eq('id', selectedUser.id);
 
-            if (error) throw error;
+            if (profileError) throw profileError;
+
+            // 1.5 Update Email in Auth (Separate Payload)
+            let emailUpdated = false;
+            let emailError: string | null = null;
+
+            if (formData.email && formData.email !== selectedUser.email) {
+                const { error: authEmailError } = await adminUpdateUser({
+                    targetUserId: selectedUser.id,
+                    email: formData.email
+                });
+
+                if (authEmailError) {
+                    emailError = authEmailError;
+                    console.error('Email update failed:', authEmailError);
+                } else {
+                    emailUpdated = true;
+                }
+            }
+
+            // 2. Update Password (if provided)
+            let passwordUpdated = false;
+            let passwordError: string | null = null;
+
+            if (formData.password && formData.password.trim() !== '') {
+                const { error: authError } = await adminUpdateUser({
+                    targetUserId: selectedUser.id,
+                    password: formData.password
+                });
+
+                if (authError) {
+                    passwordError = authError;
+                    console.error('Password update failed:', authError);
+                } else {
+                    passwordUpdated = true;
+                }
+            }
+
             await fetchData();
             setShowEditModal(false);
+
+            if (passwordError) {
+                alert(`تم تحديث البيانات الشخصية بنجاح، ولكن فشل تغيير كلمة المرور: ${passwordError}\nيرجى التأكد من تشغيل Edge Functions.`);
+            } else if (passwordUpdated) {
+                alert('تم تحديث البيانات وكلمة المرور بنجاح');
+            } else {
+                alert('تم تحديث البيانات بنجاح');
+            }
         } catch (error) {
             console.error('Error updating user:', error);
-            alert('فشل تحديث البيانات');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            alert(`فشل تحديث البيانات: ${(error as any).message || error}`);
         } finally {
             setSaving(false);
         }
@@ -165,11 +226,11 @@ const UserManager = () => {
         e.preventDefault();
         setSaving(true);
         try {
-            const { data, error } = await adminCreateUser({
-                email: formData.email,
+            const { error } = await adminCreateUser({
+                email: formData.email!,
                 password: formData.password || '12345678', // Default or required?
-                full_name: formData.full_name,
-                role: formData.role,
+                full_name: formData.full_name!,
+                role: formData.role as 'admin' | 'manager' | 'technician',
                 branch_id: formData.branch,
                 phone: formData.phone //If added to form
             });
@@ -180,11 +241,40 @@ const UserManager = () => {
             setShowCreateModal(false);
             setFormData({}); // Reset form
             fetchData(); // Refresh list
-        } catch (error: any) {
+        } catch (error) {
             console.error('Error creating user:', error);
-            alert(`فشل إنشاء المستخدم: ${error.message}`);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            alert(`فشل إنشاء المستخدم: ${(error as any).message}`);
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleDeleteUser = async (user: Profile) => {
+        if (!confirm(`هل أنت متأكد من حذف حساب ${user.full_name} نهائياً؟\nلا يمكن التراجع عن هذا الإجراء.`)) return;
+
+        setLoading(true); // Global loading or specific? Let's use loading for safety
+        try {
+            const { error } = await supabase.from('profiles').delete().eq('id', user.id);
+            // Note: Direct delete from profiles depends on RLS. Ideally we call the edge function 
+            // which deletes from Auth (cascading to Profile).
+
+            const { error: apiError } = await adminDeleteUser(user.id);
+
+            if (apiError) {
+                // Fallback: If edge function fails (env issue), try direct DB delete (if RLS allows)
+                console.warn('Edge function delete failed, trying direct DB delete...', apiError);
+                const { error: dbError } = await supabase.from('profiles').delete().eq('id', user.id);
+                if (dbError) throw new Error(apiError + " & " + dbError.message);
+            }
+
+            alert('تم حذف المستخدم بنجاح');
+            await fetchData();
+        } catch (error) {
+            console.error('Error deleting user:', error);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            alert(`فشل حذف المستخدم: ${(error as any).message || error}`);
+            setLoading(false);
         }
     };
 
@@ -222,7 +312,7 @@ const UserManager = () => {
                 <div className="flex flex-wrap gap-2 w-full md:w-auto">
                     <select
                         value={roleFilter}
-                        onChange={e => setRoleFilter(e.target.value as any)}
+                        onChange={e => setRoleFilter(e.target.value as 'all' | 'admin' | 'manager' | 'technician')}
                         className="flex-1 md:w-40 p-2.5 rounded-xl border border-slate-200 focus:border-blue-500 outline-none bg-white"
                     >
                         <option value="all">جميع الأدوار</option>
@@ -324,11 +414,18 @@ const UserManager = () => {
                                                 onClick={() => handleToggleStatus(user)}
                                                 className={`p-2 rounded-lg transition-colors ${user.status === 'suspended'
                                                     ? 'text-green-600 hover:bg-green-50'
-                                                    : 'text-red-600 hover:bg-red-50'
+                                                    : 'text-orange-600 hover:bg-orange-50'
                                                     }`}
                                                 title={user.status === 'suspended' ? 'تفعيل' : 'إيقاف'}
                                             >
                                                 <Power className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteUser(user)}
+                                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="حذف نهائي"
+                                            >
+                                                <X className="w-4 h-4" />
                                             </button>
                                         </div>
                                     </td>
@@ -360,6 +457,16 @@ const UserManager = () => {
                                 />
                             </div>
                             <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">البريد الإلكتروني</label>
+                                <input
+                                    type="email"
+                                    value={formData.email || ''}
+                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                    className="w-full p-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none"
+                                    dir="ltr"
+                                />
+                            </div>
+                            <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-2">رقم الهاتف</label>
                                 <input
                                     type="text"
@@ -373,7 +480,7 @@ const UserManager = () => {
                                 <label className="block text-sm font-bold text-slate-700 mb-2">الدور الوظيفي</label>
                                 <select
                                     value={formData.role}
-                                    onChange={e => setFormData({ ...formData, role: e.target.value })}
+                                    onChange={e => setFormData({ ...formData, role: e.target.value as 'admin' | 'manager' | 'technician' })}
                                     className="w-full p-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none bg-white"
                                 >
                                     <option value="admin">مدير نظام (Admin)</option>
@@ -385,12 +492,26 @@ const UserManager = () => {
                                 <label className="block text-sm font-bold text-slate-700 mb-2">الحالة</label>
                                 <select
                                     value={formData.status}
-                                    onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                    onChange={e => setFormData({ ...formData, status: e.target.value as 'active' | 'suspended' })}
                                     className="w-full p-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none bg-white"
                                 >
                                     <option value="active">نشط</option>
                                     <option value="suspended">موقوف</option>
                                 </select>
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-100">
+                                <label className="block text-sm font-bold text-slate-700 mb-2">
+                                    تغيير كلمة المرور
+                                    <span className="text-xs text-slate-400 font-normal mr-2">(اتركها فارغة للاحتفاظ بالكلمة الحالية)</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    placeholder="كلمة المرور الجديدة..."
+                                    value={formData.password || ''}
+                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                    className="w-full p-3 rounded-xl border border-slate-200 focus:border-blue-500 outline-none"
+                                />
                             </div>
                             <div className="pt-4">
                                 <button
@@ -449,7 +570,7 @@ const UserManager = () => {
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-2">الدور</label>
                                     <select
-                                        onChange={e => setFormData({ ...formData, role: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, role: e.target.value as 'admin' | 'manager' | 'technician' })}
                                         className="w-full p-3 rounded-xl border border-slate-200 bg-white"
                                     >
                                         <option value="technician">فني</option>

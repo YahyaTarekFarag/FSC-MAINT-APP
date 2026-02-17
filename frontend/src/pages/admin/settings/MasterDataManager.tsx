@@ -4,11 +4,13 @@ import {
     Plus, Trash2, Settings, Layers, Box, Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 
 type Brand = {
     id: string;
     name_ar: string;
-    logo_url?: string;
+    logo_url: string | null;
+    created_at: string;
 };
 
 const MasterDataManager = () => {
@@ -27,6 +29,21 @@ const MasterDataManager = () => {
     const [slaThreshold, setSlaThreshold] = useState(24);
     const [lowStockThreshold, setLowStockThreshold] = useState(5);
     const [savingSettings, setSavingSettings] = useState(false);
+
+    // Confirm Dialog State
+    const [confirmState, setConfirmState] = useState<{
+        isOpen: boolean;
+        type: 'brand' | 'unit';
+        id: string | number;
+        title: string;
+        message: string;
+    }>({
+        isOpen: false,
+        type: 'brand',
+        id: '',
+        title: '',
+        message: ''
+    });
 
     useEffect(() => {
         if (activeTab === 'brands') fetchBrands();
@@ -69,12 +86,11 @@ const MasterDataManager = () => {
         }
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleAddBrand = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newBrandName.trim()) return;
         setLoading(true);
-        const { error } = await (supabase.from('brands') as any).insert([{ name_ar: newBrandName.trim() }]);
+        const { error } = await supabase.from('brands').insert([{ name_ar: newBrandName.trim() }]);
         if (error) {
             toast.error('فشل إضافة العلامة التجارية');
             console.error(error);
@@ -86,10 +102,19 @@ const MasterDataManager = () => {
         setLoading(false);
     };
 
-    const handleDeleteBrand = async (id: string) => {
-        if (!confirm('هل أنت متأكد من حذف هذه العلامة التجارية؟')) return;
+    const confirmDeleteBrand = (id: string) => {
+        setConfirmState({
+            isOpen: true,
+            type: 'brand',
+            id,
+            title: 'حذف علامة تجارية',
+            message: 'هل أنت متأكد من حذف هذه العلامة التجارية؟ قد يؤثر ذلك على المنتجات المرتبطة بها.'
+        });
+    };
+
+    const handleDeleteBrand = async () => {
         setLoading(true);
-        const { error } = await supabase.from('brands').delete().eq('id', id);
+        const { error } = await supabase.from('brands').delete().eq('id', String(confirmState.id));
         if (error) {
             toast.error('فشل حذف العلامة التجارية');
             console.error(error);
@@ -98,14 +123,14 @@ const MasterDataManager = () => {
             fetchBrands();
         }
         setLoading(false);
+        closeConfirm();
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleAddUnit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newUnitName.trim()) return;
         setLoading(true);
-        const { error } = await (supabase.from('unit_types') as any).insert([{ name_ar: newUnitName.trim() }]);
+        const { error } = await supabase.from('unit_types').insert([{ name_ar: newUnitName.trim() }]);
         if (error) {
             toast.error('فشل إضافة الوحدة');
             console.error(error);
@@ -117,10 +142,19 @@ const MasterDataManager = () => {
         setLoading(false);
     };
 
-    const handleDeleteUnit = async (id: number) => {
-        if (!confirm('هل أنت متأكد من حذف هذه الوحدة؟')) return;
+    const confirmDeleteUnit = (id: number) => {
+        setConfirmState({
+            isOpen: true,
+            type: 'unit',
+            id,
+            title: 'حذف وحدة',
+            message: 'هل أنت متأكد من حذف هذا النوع من الوحدات؟'
+        });
+    };
+
+    const handleDeleteUnit = async () => {
         setLoading(true);
-        const { error } = await supabase.from('unit_types').delete().eq('id', id);
+        const { error } = await supabase.from('unit_types').delete().eq('id', Number(confirmState.id));
         if (error) {
             toast.error('فشل حذف الوحدة');
             console.error(error);
@@ -129,19 +163,28 @@ const MasterDataManager = () => {
             fetchUnits();
         }
         setLoading(false);
+        closeConfirm();
+    };
+
+    const closeConfirm = () => {
+        setConfirmState(prev => ({ ...prev, isOpen: false }));
+    };
+
+    const handleConfirmAction = () => {
+        if (confirmState.type === 'brand') handleDeleteBrand();
+        else handleDeleteUnit();
     };
 
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error: err1 } = await (supabase.from('system_config') as any).upsert(
-                { key: 'sla_threshold_hours', value: slaThreshold, description: 'الحد الحرج للتذاكر بالساعات' },
+            const { error: err1 } = await supabase.from('system_config').upsert(
+                { key: 'sla_threshold_hours', value: String(slaThreshold), description: 'الحد الحرج للتذاكر بالساعات' },
                 { onConflict: 'key' }
             );
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error: err2 } = await (supabase.from('system_config') as any).upsert(
-                { key: 'low_stock_threshold', value: lowStockThreshold, description: 'حد تنبيه انخفاض المخزون' },
+
+            const { error: err2 } = await supabase.from('system_config').upsert(
+                { key: 'low_stock_threshold', value: String(lowStockThreshold), description: 'حد تنبيه انخفاض المخزون' },
                 { onConflict: 'key' }
             );
 
@@ -207,7 +250,7 @@ const MasterDataManager = () => {
                             {brands.map(brand => (
                                 <div key={brand.id} className="flex items-center justify-between py-3 px-2 hover:bg-slate-50 rounded-lg">
                                     <span className="font-bold text-slate-800">{brand.name_ar}</span>
-                                    <button onClick={() => handleDeleteBrand(brand.id)} className="text-red-500 hover:text-red-700 p-1">
+                                    <button onClick={() => confirmDeleteBrand(brand.id)} className="text-red-500 hover:text-red-700 p-1">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
@@ -237,7 +280,7 @@ const MasterDataManager = () => {
                             {units.map(unit => (
                                 <div key={unit.id} className="flex items-center justify-between py-3 px-2 hover:bg-slate-50 rounded-lg">
                                     <span className="font-bold text-slate-800">{unit.name_ar}</span>
-                                    <button onClick={() => handleDeleteUnit(unit.id)} className="text-red-500 hover:text-red-700 p-1">
+                                    <button onClick={() => confirmDeleteUnit(unit.id)} className="text-red-500 hover:text-red-700 p-1">
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
@@ -304,6 +347,17 @@ const MasterDataManager = () => {
                     </div>
                 )}
             </div>
+
+            <ConfirmDialog
+                isOpen={confirmState.isOpen}
+                title={confirmState.title}
+                message={confirmState.message}
+                confirmLabel="حذف"
+                variant="danger"
+                isLoading={loading}
+                onConfirm={handleConfirmAction}
+                onCancel={closeConfirm}
+            />
         </div>
     );
 };

@@ -16,7 +16,8 @@ import {
     Shield,
     Briefcase,
     UserCog,
-    FileInput
+    FileInput,
+    Map
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -60,6 +61,7 @@ const AdminLayout = () => {
         { path: '/admin/tickets', icon: Ticket, label: 'إدارة البلاغات' },
         { path: '/admin/workforce/roster', icon: Users, label: 'سجل الفنيين' },
         { path: '/admin/workforce/assignments', icon: Briefcase, label: 'توزيع المهام' },
+        { path: '/admin/map', icon: Map, label: 'الخريطة المباشرة' },
         { path: '/admin/users', icon: UserCog, label: 'إدارة المستخدمين' },
         { path: '/admin/inventory', icon: Store, label: 'المخزن' },
         { path: '/admin/structure', icon: Database, label: 'الهيكل التنظيمي' },

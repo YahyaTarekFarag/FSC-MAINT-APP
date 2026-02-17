@@ -36,8 +36,27 @@ const BranchForm: React.FC<BranchFormProps> = ({ branch, onClose, onSuccess }) =
         brand_id: branch?.brand_id || '',
         area_id: branch?.area_id || '',
         google_map_link: branch?.google_map_link || '',
+        location_lat: branch?.location_lat || 30.0444, // Default to Cairo
+        location_lng: branch?.location_lng || 31.2357,
         is_active: true // Assuming active by default
     });
+
+    const LocationMarker = () => {
+        useMapEvents({
+            click(e) {
+                setFormData(prev => ({
+                    ...prev,
+                    location_lat: e.latlng.lat,
+                    location_lng: e.latlng.lng,
+                    google_map_link: `https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}`
+                }));
+            },
+        });
+
+        return (
+            <Marker position={[formData.location_lat, formData.location_lng]} />
+        );
+    };
 
     useEffect(() => {
         fetchMetadata();
@@ -210,6 +229,25 @@ const BranchForm: React.FC<BranchFormProps> = ({ branch, onClose, onSuccess }) =
                             </a>
                         )}
                     </div>
+                </div>
+
+                {/* Map Picker */}
+                <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 block">تحديد الموقع على الخريطة</label>
+                    <div className="h-64 rounded-2xl overflow-hidden border border-slate-200 relative z-0">
+                        <MapContainer
+                            center={[formData.location_lat, formData.location_lng]}
+                            zoom={13}
+                            className="h-full w-full"
+                        >
+                            <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; OpenStreetMap contributors'
+                            />
+                            <LocationMarker />
+                        </MapContainer>
+                    </div>
+                    <p className="text-xs text-slate-400">اضغط على الخريطة لتحديث الموقع ورابط جوجل تلقائياً</p>
                 </div>
 
                 {/* Status Toggle (Simple checkbox for UI simplicity) */}

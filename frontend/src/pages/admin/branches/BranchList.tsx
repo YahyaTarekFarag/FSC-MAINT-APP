@@ -12,6 +12,9 @@ import {
 import { supabase } from '../../../lib/supabase';
 import type { Database } from '../../../lib/supabase';
 import BranchForm from './BranchForm';
+import toast from 'react-hot-toast';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
+import EmptyState from '../../../components/ui/EmptyState';
 
 type BranchWithRelations = Database['public']['Tables']['branches']['Row'] & {
     brand: Database['public']['Tables']['brands']['Row'];
@@ -28,6 +31,10 @@ const BranchList: React.FC = () => {
     // Modal/Side-panel State
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState<Database['public']['Tables']['branches']['Row'] | null>(null);
+
+    // Delete State
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchBranches = useCallback(async () => {
         setLoading(true);
@@ -54,20 +61,29 @@ const BranchList: React.FC = () => {
         fetchBranches();
     }, [fetchBranches]);
 
-    const handleDelete = async (id: string, name: string) => {
-        if (!window.confirm(`هل أنت متأكد من حذف فرع "${name}"؟`)) return;
+    const confirmDelete = (id: string, name: string) => {
+        setDeleteTarget({ id, name });
+    };
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setIsDeleting(true);
 
         try {
             const { error } = await supabase
                 .from('branches')
                 .delete()
-                .eq('id', id);
+                .eq('id', deleteTarget.id);
 
             if (error) throw error;
+            toast.success('تم حذف الفرع بنجاح');
             fetchBranches();
         } catch (err: any) {
             console.error('Error deleting branch:', err);
-            alert('خطأ في حذف الفرع: ' + err.message);
+            toast.error('خطأ في حذف الفرع: ' + err.message);
+        } finally {
+            setIsDeleting(false);
+            setDeleteTarget(null);
         }
     };
 
@@ -141,9 +157,17 @@ const BranchList: React.FC = () => {
                                         </tr>
                                     ) : filteredBranches.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="p-20 text-center space-y-4">
-                                                <Building2 className="w-12 h-12 text-slate-200 mx-auto" />
-                                                <p className="text-slate-400 font-bold">لم يتم العثور على فروع</p>
+                                            <td colSpan={5} className="p-12">
+                                                <EmptyState
+                                                    icon={Building2}
+                                                    title="لا توجد فروع"
+                                                    description="لم يتم العثور على فروع تطابق بحثك. قم بإضافة فرع جديد للبدء."
+                                                    actionLabel="إضافة فرع جديد"
+                                                    onAction={() => {
+                                                        setEditingBranch(null);
+                                                        setIsFormOpen(true);
+                                                    }}
+                                                />
                                             </td>
                                         </tr>
                                     ) : (
@@ -202,7 +226,7 @@ const BranchList: React.FC = () => {
                                                             <Edit2 className="w-4 h-4" />
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDelete(branch.id, branch.name_ar)}
+                                                            onClick={() => confirmDelete(branch.id, branch.name_ar)}
                                                             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
@@ -232,6 +256,17 @@ const BranchList: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            <ConfirmDialog
+                isOpen={!!deleteTarget}
+                title={`حذف فرع ${deleteTarget?.name}`}
+                message="هل أنت متأكد من أنك تريد حذف هذا الفرع؟ قد يؤدي هذا إلى فقدان البيانات المرتبطة به."
+                confirmLabel="حذف الفرع"
+                variant="danger"
+                isLoading={isDeleting}
+                onConfirm={handleDelete}
+                onCancel={() => setDeleteTarget(null)}
+            />
         </div>
     );
 };

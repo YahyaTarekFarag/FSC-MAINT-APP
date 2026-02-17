@@ -8,6 +8,7 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 
 import ReloadPrompt from './components/common/ReloadPrompt';
 import toast, { Toaster } from 'react-hot-toast';
+import { useLocationSync } from './hooks/useLocationSync';
 
 // Eager Components (Core)
 import Login from './pages/Login';
@@ -34,6 +35,7 @@ const AuditLogs = lazy(() => import('./pages/admin/system-logs/AuditLogs'));
 const TechRoster = lazy(() => import('./pages/admin/workforce/TechRoster'));
 const AssignmentManager = lazy(() => import('./pages/admin/settings/AssignmentManager'));
 const FormEditor = lazy(() => import('./pages/admin/settings/FormEditor'));
+const TechnicianMap = lazy(() => import('./pages/admin/users/TechnicianMap'));
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -41,6 +43,9 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Sync Technician Location
+  useLocationSync(profile);
 
   useEffect(() => {
     // 1. Initial session check
@@ -141,6 +146,7 @@ function App() {
                   <Route path="tickets" element={<TicketList userProfile={profile} />} />
                   <Route path="workforce/roster" element={<TechRoster />} />
                   <Route path="workforce/assignments" element={<AssignmentManager />} />
+                  <Route path="map" element={<TechnicianMap />} />
                   <Route path="inventory" element={<InventoryList />} />
                   <Route path="forms" element={<FormBuilder />} />
                   <Route path="settings/forms" element={<FormEditor />} />

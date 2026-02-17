@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
-    Save, Shield, AlertTriangle, Clock, Activity, ToggleLeft, ToggleRight, Loader2, Layout
+    Save, Shield, AlertTriangle, Clock, Activity, ToggleLeft, ToggleRight, Loader2, Layout, MapPin
 } from 'lucide-react';
 import { logActivity } from '../../../lib/api';
 import CategoriesManager from './CategoriesManager';
@@ -12,14 +12,16 @@ interface SystemConfig {
     auto_assign: boolean;
     require_photos: boolean;
     stock_alert_threshold: number;
+    geofencing_enabled: boolean;
 }
 
 const SystemSettings = () => {
     const [config, setConfig] = useState<SystemConfig>({
         maintenance_mode: false,
-        auto_assign: true,
         require_photos: true,
-        stock_alert_threshold: 10
+        auto_assign: true,
+        stock_alert_threshold: 10,
+        geofencing_enabled: true
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -46,7 +48,7 @@ const SystemSettings = () => {
             const updates = Object.entries(config).map(([key, value]) => ({
                 key,
                 value,
-                updated_at: new Date()
+                updated_at: new Date().toISOString()
             }));
 
             const { error } = await supabase.from('system_config').upsert(updates);
@@ -177,7 +179,24 @@ const SystemSettings = () => {
                                 </button>
                             </div>
                         </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+                            <div>
+                                <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <MapPin className="w-4 h-4 text-blue-500" />
+                                    التحقق الجغرافي (Geofencing)
+                                </h4>
+                                <p className="text-xs text-slate-500">إلزام الموظف بالتواجد في نطاق 200 متر من الموقع</p>
+                            </div>
+                            <button
+                                onClick={() => setConfig({ ...config, geofencing_enabled: !config.geofencing_enabled })}
+                                className={`text-2xl transition-colors ${config.geofencing_enabled ? 'text-blue-600' : 'text-slate-300'}`}
+                            >
+                                {config.geofencing_enabled ? <ToggleRight className="w-10 h-10" /> : <ToggleLeft className="w-10 h-10" />}
+                            </button>
+                        </div>
                     </div>
+
 
                     {/* Inventory Alerts */}
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2">
@@ -219,7 +238,7 @@ const SystemSettings = () => {
             {activeTab === 'categories' && <CategoriesManager />}
 
             {activeTab === 'sla' && <SLAManager />}
-        </div>
+        </div >
     );
 };
 

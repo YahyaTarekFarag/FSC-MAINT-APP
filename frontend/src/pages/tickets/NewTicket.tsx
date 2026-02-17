@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { calculateDistance } from '../../utils/helpers';
 import {
     Building2,
     AlertTriangle,
@@ -14,7 +15,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { uploadTicketImage } from '../../lib/storage';
 import DynamicForm from '../../components/tickets/DynamicForm';
-import type { Database } from '../../lib/supabase';
+import type { Database, Json } from '../../lib/supabase';
 
 // Leaflet Imports
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -76,7 +77,11 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
     // Geolocation State
     const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
     const [locationError, setLocationError] = useState<string | null>(null);
+
     const [mapReady, setMapReady] = useState(false);
+    const [geofenceValid, setGeofenceValid] = useState(true);
+    const [geofencingEnabled, setGeofencingEnabled] = useState(true);
+    const [distanceToBranch, setDistanceToBranch] = useState<number | null>(null);
 
     const [form, setForm] = useState<{
         branch_id: string;
@@ -94,11 +99,60 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
     const [dynamicData, setDynamicData] = useState<Record<string, unknown>>({});
 
+    // Fetch System Config
+    useEffect(() => {
+        const fetchConfig = async () => {
+            const { data } = await supabase.from('system_config').select('value').eq('key', 'geofencing_enabled').single();
+            if (data) {
+                setGeofencingEnabled(data.value === 'true');
+            }
+        };
+        fetchConfig();
+    }, []);
+
+    // Geofencing Logic
+    useEffect(() => {
+        if (!geofencingEnabled) {
+            setGeofenceValid(true);
+            setDistanceToBranch(null);
+            return;
+        }
+
+        if (location && form.branch_id && branches.length > 0) {
+            // Find selected branch to get its coordinates
+            const fetchBranchCoords = async () => {
+                const { data: branch } = await supabase
+                    .from('branches')
+                    .select('location_lat, location_lng')
+                    .eq('id', form.branch_id)
+                    .single();
+
+                if (branch && branch.location_lat && branch.location_lng) {
+                    const dist = calculateDistance(
+                        location.lat,
+                        location.lng,
+                        branch.location_lat,
+                        branch.location_lng
+                    );
+                    setDistanceToBranch(Math.round(dist));
+
+                    // 200m Threshold
+                    if (dist > 200) {
+                        setGeofenceValid(false);
+                    } else {
+                        setGeofenceValid(true);
+                    }
+                }
+            };
+            fetchBranchCoords();
+        }
+    }, [location, form.branch_id, branches, geofencingEnabled]);
+
     const fetchBranches = useCallback(async () => {
         try {
             let query = supabase
                 .from('branches')
-                .select('id, name_ar')
+                .select('id, name_ar, location_lat, location_lng')
                 .order('name_ar');
 
             // Role-based filtering
@@ -181,24 +235,46 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
 
         setLoading(true);
         try {
+            // Pre-flight check: Verify Branch Exists
+            const { data: branchExists, error: branchError } = await supabase
+                .from('branches')
+                .select('id')
+                .eq('id', form.branch_id)
+                .single();
+
+            if (branchError || !branchExists) {
+                throw new Error('الفرع المختار لم يعد موجوداً، يرجى تحديث الصفحة');
+            }
+
+            // Pre-flight check: Verify Category Exists
+            const { data: categoryExists, error: categoryError } = await supabase
+                .from('fault_categories')
+                .select('id')
+                .eq('id', form.fault_category)
+                .eq('is_active', true)
+                .single();
+
+            if (categoryError || !categoryExists) {
+                throw new Error('تصنيف العطل المختار غير متاح حالياً');
+            }
+
             const imageUrls: string[] = [];
             if (file) {
                 const url = await uploadTicketImage(file);
                 imageUrls.push(url);
             }
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error } = await (supabase.from('tickets') as any).insert({
+            const { error } = await supabase.from('tickets').insert({
                 branch_id: form.branch_id,
                 fault_category: form.fault_category,
                 priority: form.priority,
                 description: form.description,
                 images_url: imageUrls,
                 status: 'open',
-                form_data: dynamicData,
-                // Location Tracking
-                start_work_lat: location.lat,
-                start_work_lng: location.lng
+                form_data: dynamicData as unknown as Json,
+                // Location Tracking (Reporter)
+                location_lat: location.lat,
+                location_lng: location.lng
             });
 
             if (error) throw error;
@@ -342,6 +418,25 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
                     {userProfile?.role === 'manager' && userProfile.branch_id && (
                         <p className="text-xs text-blue-600/70 font-medium">تم تحديد فرعك تلقائياً</p>
                     )}
+
+                    {/* Geofencing Status */}
+                    {geofencingEnabled && distanceToBranch !== null && (
+                        <div className={`mt-4 p-3 rounded-xl border flex items-start gap-3 ${geofenceValid ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                            {geofenceValid ? (
+                                <CheckCircle2 className="w-5 h-5 shrink-0" />
+                            ) : (
+                                <AlertTriangle className="w-5 h-5 shrink-0" />
+                            )}
+                            <div>
+                                <p className="font-bold text-sm">
+                                    {geofenceValid ? 'أنت داخل نطاق الفرع' : 'أنت خارج نطاق الفرع المسموح'}
+                                </p>
+                                <p className="text-xs opacity-80 mt-1">
+                                    المسافة الحالية: {distanceToBranch} متر (الحد الأقصى: 200 متر)
+                                </p>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Category & Priority */}
@@ -465,11 +560,11 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
                 <div className="pt-4 flex gap-4">
                     <button
                         type="submit"
-                        disabled={loading || !location}
+                        disabled={loading || !location || (geofencingEnabled && !geofenceValid)}
                         className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-blue-200 hover:-translate-y-1 transition-all disabled:opacity-50 disabled:transform-none flex items-center justify-center gap-3 text-lg"
                     >
                         {loading && <Loader2 className="w-6 h-6 animate-spin" />}
-                        {location ? 'إرسال البلاغ' : 'بانتظار تحديد الموقع...'}
+                        {location ? (geofencingEnabled && !geofenceValid ? 'خارج النطاق الجغرافي' : 'إرسال البلاغ') : 'بانتظار تحديد الموقع...'}
                     </button>
                     <button
                         type="button"

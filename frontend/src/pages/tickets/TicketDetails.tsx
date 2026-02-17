@@ -23,8 +23,14 @@ import { useGeoLocation } from '../../hooks/useGeoLocation';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     branch: Database['public']['Tables']['branches']['Row'];
-    form_data?: Record<string, any>;
-    category_id?: string; // Ensure this is typed
+    form_data?: Record<string, unknown>;
+    category_id?: string;
+    technician?: { full_name: string | null };
+};
+
+type TechnicianProfile = {
+    id: string;
+    full_name: string | null;
 };
 
 type Question = {
@@ -47,12 +53,19 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
     const [showCloseModal, setShowCloseModal] = useState(false);
     const { getCoordinates } = useGeoLocation();
 
+    // Assignment State
+    const [technicians, setTechnicians] = useState<TechnicianProfile[]>([]);
+    const [selectedTech, setSelectedTech] = useState<string>('');
+    const [isAssigning, setIsAssigning] = useState(false);
+
+    type TicketFormData = Record<string, unknown>;
+
     const fetchTicketDetails = useCallback(async () => {
         if (!id) return;
         try {
             const { data, error } = await supabase
                 .from('tickets')
-                .select('*, branch:branches!inner(*)')
+                .select('*, branch:branches!inner(*), technician:technician_id(full_name)')
                 .eq('id', id)
                 .single();
 
@@ -61,17 +74,18 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
             setTicket(ticketData);
 
             // Fetch questions if form_data exists
-            if (ticketData.form_data && Object.keys(ticketData.form_data).length > 0) {
-                const questionIds = Object.keys(ticketData.form_data);
+            const formData = ticketData.form_data as TicketFormData;
+            if (formData && Object.keys(formData).length > 0) {
+                const questionIds = Object.keys(formData).map(Number);
                 const { data: questions, error: qError } = await supabase
-                    .from('category_questions' as any)
+                    .from('category_questions')
                     .select('id, question_text, field_type')
                     .in('id', questionIds);
 
                 if (!qError && questions) {
                     const map: Record<string, Question> = {};
-                    questions.forEach((q: any) => {
-                        map[q.id] = q;
+                    questions.forEach((q) => {
+                        map[q.id.toString()] = q;
                     });
                     setQuestionsMap(map);
                 }
@@ -89,6 +103,44 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
         fetchTicketDetails();
     }, [fetchTicketDetails]);
 
+    // Fetch technicians for dropdown (Admin/Manager only)
+    useEffect(() => {
+        if (userProfile?.role === 'admin' || userProfile?.role === 'manager') {
+            const fetchTechs = async () => {
+                const { data } = await supabase
+                    .from('profiles')
+                    .select('id, full_name')
+                    .eq('role', 'technician')
+                    .eq('status', 'active');
+                if (data) setTechnicians(data);
+            };
+            fetchTechs();
+        }
+    }, [userProfile]);
+
+    const handleAssignTechnician = async () => {
+        if (!ticket || !selectedTech) return;
+        setIsAssigning(true);
+        try {
+            const { error } = await supabase
+                .from('tickets')
+                .update({ technician_id: selectedTech, status: 'in_progress' }) // Auto-start? Maybe just assign. Let's keep status as is or set to open/in_progress. 
+                // Usually assignment means moving to in_progress or at least 'assigned'.
+                // For now, just update technician_id.
+                .eq('id', ticket.id);
+
+            if (error) throw error;
+            await fetchTicketDetails();
+            alert('تم تعيين الفني بنجاح');
+            setSelectedTech('');
+        } catch (error) {
+            console.error('Error assigning technician:', error);
+            alert('فشل تعيين الفني');
+        } finally {
+            setIsAssigning(false);
+        }
+    };
+
     const updateStatus = async (newStatus: 'in_progress' | 'closed') => {
         if (!ticket || !id) return;
         setActionLoading(true);
@@ -100,7 +152,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                 console.warn('Geolocation failed, proceeding without coordinates:', geoErr);
             }
 
-            const updateData: any = {
+            const updateData: Database['public']['Tables']['tickets']['Update'] = {
                 status: newStatus,
                 technician_id: userProfile?.id,
                 updated_at: new Date().toISOString()
@@ -110,14 +162,18 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                 if (newStatus === 'in_progress') {
                     updateData.start_work_lat = coords.latitude;
                     updateData.start_work_lng = coords.longitude;
+                    updateData.started_at = new Date().toISOString(); // Capture start time
                 } else if (newStatus === 'closed') {
                     updateData.end_work_lat = coords.latitude;
                     updateData.end_work_lng = coords.longitude;
+                    // closed_at is usually handled by DB trigger or we can set it here if needed, 
+                    // but supabase.ts shows 'closed_at' is nullable string
+                    updateData.closed_at = new Date().toISOString();
                 }
             }
 
-            const { error } = await (supabase
-                .from('tickets') as any)
+            const { error } = await supabase
+                .from('tickets')
                 .update(updateData)
                 .eq('id', id);
 
@@ -309,6 +365,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                                 </div>
                             </div>
 
+
                             {ticket.branch.google_map_link && (
                                 <a
                                     href={ticket.branch.google_map_link}
@@ -323,6 +380,38 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                             )}
                         </div>
                     </div>
+
+                    {/* Assignment Card (Admin/Manager) */}
+                    {(userProfile?.role === 'admin' || userProfile?.role === 'manager') && ticket.status !== 'closed' && (
+                        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                            <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                <User className="w-5 h-5 text-blue-600" />
+                                تعيين فني
+                            </h3>
+                            <div className="space-y-3">
+                                <select
+                                    value={selectedTech}
+                                    onChange={(e) => setSelectedTech(e.target.value)}
+                                    className="w-full p-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none"
+                                >
+                                    <option value="">اختر الفني...</option>
+                                    {technicians.map(tech => (
+                                        <option key={tech.id} value={tech.id}>
+                                            {tech.full_name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={handleAssignTechnician}
+                                    disabled={!selectedTech || isAssigning}
+                                    className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isAssigning ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                    تأكيد التعيين
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Ticket ID & History */}
                     <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-xl space-y-6 relative overflow-hidden">
@@ -344,7 +433,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                                         </div>
                                         <div>
                                             <p className="text-[10px] text-slate-400">الفني المعني</p>
-                                            <p className="text-sm font-bold">تم الاستلام والمتابعة</p>
+                                            <p className="text-sm font-bold">{ticket.technician?.full_name || 'غير معروف'}</p>
                                         </div>
                                     </div>
                                 )}

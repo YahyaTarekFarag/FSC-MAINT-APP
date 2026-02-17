@@ -4,10 +4,13 @@ import { supabase } from '../../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { logActivity } from '../../../lib/api';
 import * as XLSX from 'xlsx';
+import toast from 'react-hot-toast';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
+import EmptyState from '../../../components/ui/EmptyState';
 
 // Types
 type SparePart = {
-    id: string;
+    id: number;
     name_ar: string;
     part_number: string | null;
     description: string | null;
@@ -57,7 +60,11 @@ const InventoryList = () => {
     const [restockAmount, setRestockAmount] = useState<number>(1);
     const [submitting, setSubmitting] = useState(false);
 
-    const fetchHistory = async (partId: string) => {
+    // Delete Modal State
+    const [deleteId, setDeleteId] = useState<number | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const fetchHistory = async (partId: number) => {
         setHistoryLoading(true);
         try {
             const { data, error } = await supabase
@@ -165,7 +172,7 @@ const InventoryList = () => {
             resetForm();
         } catch (err) {
             console.error('Error saving part:', err);
-            alert('فشل في حفظ البيانات');
+            toast.error('فشل في حفظ البيانات');
         } finally {
             setSubmitting(false);
         }
@@ -246,7 +253,7 @@ const InventoryList = () => {
             setRestockAmount(1);
         } catch (err) {
             console.error('Error restocking:', err);
-            alert('فشل في إعادة التخزين');
+            toast.error('فشل في إعادة التخزين');
         } finally {
             setSubmitting(false);
         }
@@ -337,28 +344,41 @@ const InventoryList = () => {
                 }
             }
 
-            alert(`تم الاستيراد: ${successCount} ناجح, ${failCount} فشل`);
+            if (failCount === 0) {
+                toast.success(`تم استيراد ${successCount} قطعة بنجاح ✅`);
+            } else {
+                toast(`تم استيراد ${successCount} بنجاح، وفشل ${failCount}`, { icon: '⚠️' });
+            }
             await fetchInitialData();
 
         } catch (err) {
             console.error('Import process failed:', err);
-            alert('فشل في معالجة الملف');
+            toast.error('فشل في معالجة الملف');
         } finally {
             setLoading(false);
             e.target.value = ''; // Reset input
         }
     };
 
-    const handleDelete = async (id: number) => {
-        if (!confirm('هل أنت متأكد من حذف هذه القطعة؟')) return;
+    const confirmDelete = (id: number) => {
+        setDeleteId(id);
+    };
+
+    const handleDelete = async () => {
+        if (!deleteId) return;
+        setIsDeleting(true);
         try {
-            const { error } = await supabase.from('spare_parts').delete().eq('id', id);
+            const { error } = await supabase.from('spare_parts').delete().eq('id', deleteId);
             if (error) throw error;
-            await logActivity('DELETE', 'PART', { id });
+            await logActivity('DELETE', 'PART', { id: deleteId });
+            toast.success('تم حذف القطعة بنجاح 🗑️');
             fetchInitialData();
         } catch (error) {
             console.error('Error deleting part:', error);
-            alert('فشل الحذف');
+            toast.error('فشل الحذف');
+        } finally {
+            setIsDeleting(false);
+            setDeleteId(null);
         }
     };
 
@@ -482,88 +502,99 @@ const InventoryList = () => {
                             {loading ? (
                                 <tr>
                                     <td colSpan={5} className="py-12 text-center">
-                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+                                        <div className="flex flex-col items-center gap-3">
+                                            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                            <p className="text-slate-400 font-medium">جاري تحميل البيانات...</p>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : filteredParts.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="py-12 text-center text-slate-400 font-bold">
-                                        لا توجد قطع مطابقة للبحث
+                                    <td colSpan={5} className="py-12">
+                                        <EmptyState
+                                            icon={Package}
+                                            title="لا توجد قطع مطابقة"
+                                            description="لم يتم العثور على أي قطع تطابق بحثك. جرب كلمات مفتاحية مختلفة أو أضف قطعة جديدة."
+                                            actionLabel="إضافة قطعة جديدة"
+                                            onAction={openAddModal}
+                                        />
                                     </td>
                                 </tr>
-                            ) : filteredParts.map((part) => (
-                                <tr key={part.id} className="hover:bg-slate-50 transition-colors group">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
-                                                <Package className="w-6 h-6" />
+                            ) : (
+                                filteredParts.map((part) => (
+                                    <tr key={part.id} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                                                    <Package className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-slate-900">{part.name_ar}</h4>
+                                                    <p className="text-xs text-slate-500 font-mono">{part.part_number || 'No SKU'}</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <h4 className="font-bold text-slate-900">{part.name_ar}</h4>
-                                                <p className="text-xs text-slate-500 font-mono">{part.part_number || 'No SKU'}</p>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col gap-1">
+                                                <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold w-fit">
+                                                    {categories.find(c => c.id === part.category_id)?.name_ar || 'عام'}
+                                                </span>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold w-fit">
-                                                {categories.find(c => c.id === part.category_id)?.name_ar || 'عام'}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`font-bold ${part.quantity <= part.min_threshold ? 'text-red-600' : 'text-slate-700'}`}>
-                                                {part.quantity}
-                                            </span>
-                                            <span className="text-xs text-slate-400 font-bold">
-                                                {part.unit_types?.name_ar || 'وحدة'}
-                                            </span>
-                                            {part.quantity <= part.min_threshold && (
-                                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title="مخزون منخفض"></span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 font-bold text-slate-700">
-                                        {part.price.toLocaleString()} ج.م
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => openHistory(part)}
-                                                className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
-                                                title="سجل الحركات"
-                                            >
-                                                <History className="w-5 h-5" />
-                                            </button>
-                                            <button
-                                                onClick={() => openEditModal(part)}
-                                                className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
-                                                title="تعديل"
-                                            >
-                                                <Edit className="w-5 h-5" />
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedPart(part);
-                                                    setShowRestockModal(true);
-                                                }}
-                                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg tooltip"
-                                                title="إعادة تعبئة"
-                                            >
-                                                <TrendingUp className="w-5 h-5" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDelete(part.id)}
-                                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-                                                title="حذف"
-                                            >
-                                                <Trash2 className="w-5 h-5" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`font-bold ${part.quantity <= part.min_threshold ? 'text-red-600' : 'text-slate-700'}`}>
+                                                    {part.quantity}
+                                                </span>
+                                                <span className="text-xs text-slate-400 font-bold">
+                                                    {part.unit_types?.name_ar || 'وحدة'}
+                                                </span>
+                                                {part.quantity <= part.min_threshold && (
+                                                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title="مخزون منخفض"></span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 font-bold text-slate-700">
+                                            {part.price.toLocaleString()} ج.م
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => openHistory(part)}
+                                                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                                                    title="سجل الحركات"
+                                                >
+                                                    <History className="w-5 h-5" />
+                                                </button>
+                                                <button
+                                                    onClick={() => openEditModal(part)}
+                                                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                                                    title="تعديل"
+                                                >
+                                                    <Edit className="w-5 h-5" />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedPart(part);
+                                                        setShowRestockModal(true);
+                                                    }}
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg tooltip"
+                                                    title="إعادة تعبئة"
+                                                >
+                                                    <TrendingUp className="w-5 h-5" />
+                                                </button>
+                                                <button
+                                                    onClick={() => confirmDelete(part.id)}
+                                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                                                    title="حذف"
+                                                >
+                                                    <Trash2 className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -772,7 +803,17 @@ const InventoryList = () => {
                     </div>
                 </div>
             )}
-        </div>
+            <ConfirmDialog
+                isOpen={!!deleteId}
+                title="حذف قطعة غيار"
+                message="هل أنت متأكد من رغبتك في حذف هذه القطعة؟ لا يمكن التراجع عن هذا الإجراء."
+                confirmLabel="نعم، احذف"
+                variant="danger"
+                isLoading={isDeleting}
+                onConfirm={handleDelete}
+                onCancel={() => setDeleteId(null)}
+            />
+        </div >
     );
 };
 

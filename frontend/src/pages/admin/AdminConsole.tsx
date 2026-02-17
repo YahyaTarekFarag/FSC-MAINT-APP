@@ -46,7 +46,7 @@ const AdminConsole: React.FC = () => {
         try {
             // Joining attendance_logs with profiles
             const { data, error } = await supabase
-                .from('attendance_logs' as any) // Keep cast if table not in types yet
+                .from('attendance_logs')
                 .select(`
           *,
           profiles:user_id(full_name, role)
@@ -54,8 +54,11 @@ const AdminConsole: React.FC = () => {
                 .order('timestamp', { ascending: false });
 
             if (error) throw error;
-            // @ts-expect-error - Type from attendance_logs with joined profiles is complex
-            setAttendance(data || []);
+
+            // Transform data to match AttendanceLog type if necessary, or let it infer
+            // The inferred type from supabase join is usually correct but might be nested array
+            // casting to unknown then to expected type is safer than 'any'
+            setAttendance(data as unknown as AttendanceLog[]);
         } catch (err) {
             console.error('Error fetching attendance:', err);
         } finally {
@@ -117,9 +120,7 @@ const AdminConsole: React.FC = () => {
                         />
                     </div>
                 ) : (
-                    // ... attendance view ...
                     <div className="p-0">
-                        {/* ... header ... */}
                         <div className="p-6 border-b border-slate-50 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Calendar className="w-5 h-5 text-blue-600" />
@@ -132,7 +133,62 @@ const AdminConsole: React.FC = () => {
                                 {loading ? <Loader2 className="w-5 h-5 animate-spin text-blue-600" /> : <Filter className="w-5 h-5 text-slate-400" />}
                             </button>
                         </div>
-                        {/* ... table ... */}
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-right">
+                                <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                                    <tr>
+                                        <th className="p-4">الموظف</th>
+                                        <th className="p-4">نوع الحركة</th>
+                                        <th className="p-4">التوقت</th>
+                                        <th className="p-4">الموقع</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                    {attendance.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="p-8 text-center text-slate-400">
+                                                لا توجد سجلات لليوم
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        attendance.map((log) => (
+                                            <tr key={log.id} className="hover:bg-slate-50/50">
+                                                <td className="p-4 font-bold text-slate-700">
+                                                    {log.profiles?.full_name || 'مستخدم محذوف'}
+                                                    <span className="block text-xs text-slate-400 font-normal">
+                                                        {log.profiles?.role}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${log.action_type === 'check_in'
+                                                            ? 'bg-emerald-50 text-emerald-600'
+                                                            : 'bg-slate-100 text-slate-600'
+                                                        }`}>
+                                                        {log.action_type === 'check_in' ? 'تسجيل دخول' : 'تسجيل خروج'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 font-mono text-sm text-slate-600">
+                                                    {new Date(log.timestamp).toLocaleTimeString('ar-EG')}
+                                                </td>
+                                                <td className="p-4 text-xs text-slate-400">
+                                                    {log.location_lat && log.location_lng ? (
+                                                        <a
+                                                            href={`https://maps.google.com/?q=${log.location_lat},${log.location_lng}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="text-blue-600 hover:underline"
+                                                        >
+                                                            عرض الخريطة
+                                                        </a>
+                                                    ) : '-'}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
             </div>
