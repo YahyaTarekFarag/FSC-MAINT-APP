@@ -30,7 +30,7 @@ const ReportsPage = lazy(() => import('./pages/admin/reports/ReportsPage'));
 const OrganizationManager = lazy(() => import('./pages/admin/structure/OrganizationManager'));
 const UserManager = lazy(() => import('./pages/admin/users/UserManager'));
 const MasterDataManager = lazy(() => import('./pages/admin/settings/MasterDataManager'));
-const AuditLogs = lazy(() => import('./pages/admin/logs/AuditLogs'));
+const AuditLogs = lazy(() => import('./pages/admin/system-logs/AuditLogs'));
 const TechRoster = lazy(() => import('./pages/admin/workforce/TechRoster'));
 const AssignmentManager = lazy(() => import('./pages/admin/settings/AssignmentManager'));
 const FormEditor = lazy(() => import('./pages/admin/settings/FormEditor'));
