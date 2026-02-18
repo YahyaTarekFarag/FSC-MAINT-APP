@@ -69,7 +69,6 @@ export default function FormManager() {
     const fetchFields = async () => {
         setLoading(true);
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data, error } = await (supabase.from('form_definitions') as any)
                 .select('*')
                 .eq('form_key', selectedFormKey)
@@ -106,7 +105,6 @@ export default function FormManager() {
                 options: newField.options?.length ? newField.options : null
             };
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase.from('form_definitions') as any)
                 .insert(payload);
 
@@ -127,7 +125,6 @@ export default function FormManager() {
         if (!window.confirm('هل أنت متأكد من حذف هذا الحقل؟')) return;
 
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase.from('form_definitions') as any)
                 .delete()
                 .eq('id', id);
@@ -135,21 +132,22 @@ export default function FormManager() {
             if (error) throw error;
             toast.success('تم حذف الحقل');
             setFields(fields.filter(f => f.id !== id));
-        } catch (error) {
+        } catch (error: unknown) {
+            console.error('Delete error:', error);
             toast.error('فشل الحذف');
         }
     };
 
     const handleToggleRequired = async (field: FormDefinition) => {
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase.from('form_definitions') as any)
                 .update({ is_required: !field.is_required })
                 .eq('id', field.id);
 
             if (error) throw error;
             setFields(fields.map(f => f.id === field.id ? { ...f, is_required: !f.is_required } : f));
-        } catch (error) {
+        } catch (error: unknown) {
+            console.error('Update error:', error);
             toast.error('حدث خطأ');
         }
     };
@@ -313,7 +311,7 @@ export default function FormManager() {
                                     {FIELD_TYPES.map(type => (
                                         <button
                                             key={type.value}
-                                            onClick={() => setNewField({ ...newField, type: type.value as any })}
+                                            onClick={() => setNewField({ ...newField, type: type.value as FormDefinition['type'] })}
                                             className={`flex items-center gap-2 p-2 rounded-lg border text-sm font-bold transition-all ${newField.type === type.value
                                                 ? 'bg-blue-50 border-blue-500 text-blue-700'
                                                 : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'

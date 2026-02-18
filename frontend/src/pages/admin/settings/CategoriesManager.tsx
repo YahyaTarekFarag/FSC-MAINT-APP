@@ -78,15 +78,15 @@ export default function CategoriesManager() {
 
             let error;
             if (selectedCategory) {
-                const { error: updateError } = await supabase
-                    .from('fault_categories')
-                    .update(payload as any)
+                const { error: updateError } = await (supabase
+                    .from('fault_categories') as any)
+                    .update(payload)
                     .eq('id', selectedCategory.id);
                 error = updateError;
             } else {
-                const { error: insertError } = await supabase
-                    .from('fault_categories')
-                    .insert(payload as any);
+                const { error: insertError } = await (supabase
+                    .from('fault_categories') as any)
+                    .insert(payload);
                 error = insertError;
             }
 

@@ -106,9 +106,9 @@ export type Database = {
                 Relationships: [];
             };
             fault_categories: {
-                Row: { id: string; name_ar: string; icon: string | null; is_active: boolean; created_at: string };
-                Insert: { id?: string; name_ar: string; icon?: string | null; is_active?: boolean; created_at?: string };
-                Update: { id?: string; name_ar?: string; icon?: string | null; is_active?: boolean; created_at?: string };
+                Row: { id: string; name_ar: string; name_en: string | null; icon: string | null; is_active: boolean; created_at: string };
+                Insert: { id?: string; name_ar: string; name_en?: string | null; icon?: string | null; is_active?: boolean; created_at?: string };
+                Update: { id?: string; name_ar?: string; name_en?: string | null; icon?: string | null; is_active?: boolean; created_at?: string };
                 Relationships: [];
             };
             category_questions: {
@@ -603,6 +603,87 @@ export type Database = {
                         columns: ["asset_id"];
                         isOneToOne: false;
                         referencedRelation: "maintenance_assets";
+                        referencedColumns: ["id"];
+                    }
+                ];
+            };
+            form_definitions: {
+                Row: {
+                    id: string;
+                    form_key: string;
+                    field_key: string;
+                    label: string;
+                    type: 'text' | 'number' | 'select' | 'yes_no' | 'photo' | 'date' | 'textarea' | 'checkbox';
+                    is_required: boolean;
+                    order_index: number;
+                    options: string[] | null;
+                    is_active: boolean;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    form_key: string;
+                    field_key: string;
+                    label: string;
+                    type: 'text' | 'number' | 'select' | 'yes_no' | 'photo' | 'date' | 'textarea' | 'checkbox';
+                    is_required?: boolean;
+                    order_index: number;
+                    options?: string[] | null;
+                    is_active?: boolean;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    form_key?: string;
+                    field_key?: string;
+                    label?: string;
+                    type?: 'text' | 'number' | 'select' | 'yes_no' | 'photo' | 'date' | 'textarea' | 'checkbox';
+                    is_required?: boolean;
+                    order_index?: number;
+                    options?: string[] | null;
+                    is_active?: boolean;
+                    created_at?: string;
+                };
+                Relationships: [];
+            };
+            form_responses: {
+                Row: {
+                    id: string;
+                    ticket_id: string;
+                    form_key: string;
+                    responses: Json;
+                    submitted_by: string;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    ticket_id: string;
+                    form_key: string;
+                    responses: Json;
+                    submitted_by: string;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    ticket_id?: string;
+                    form_key?: string;
+                    responses?: Json;
+                    submitted_by?: string;
+                    created_at?: string;
+                };
+                Relationships: [
+                    {
+                        foreignKeyName: "form_responses_ticket_id_fkey";
+                        columns: ["ticket_id"];
+                        isOneToOne: false;
+                        referencedRelation: "tickets";
+                        referencedColumns: ["id"];
+                    },
+                    {
+                        foreignKeyName: "form_responses_submitted_by_fkey";
+                        columns: ["submitted_by"];
+                        isOneToOne: false;
+                        referencedRelation: "profiles";
                         referencedColumns: ["id"];
                     }
                 ];

@@ -8,14 +8,14 @@ import {
     ExternalLink,
     MapPin,
     Loader2,
-    Database
+    Database as DatabaseIcon
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import type { Database } from '../../../lib/supabase';
 import BranchForm from './BranchForm';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
-import EmptyState from '../../../components/ui/EmptyState';
+import { EmptyState } from '../../../components/ui/EmptyState';
 
 type BranchWithRelations = Database['public']['Tables']['branches']['Row'] & {
     brand: Database['public']['Tables']['brands']['Row'];
@@ -222,7 +222,7 @@ const BranchList: React.FC = () => {
                                                             className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-xl transition-all"
                                                             title="أصول الفرع"
                                                         >
-                                                            <Database className="w-4 h-4" />
+                                                            <DatabaseIcon className="w-4 h-4" />
                                                         </a>
                                                         <button
                                                             onClick={() => {
