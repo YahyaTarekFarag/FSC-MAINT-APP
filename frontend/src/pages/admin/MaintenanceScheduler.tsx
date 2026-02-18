@@ -1,23 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Plus, Play, Clock, CheckCircle2, X, Loader2, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import type { Database } from '../../lib/supabase';
 import { toast } from 'react-hot-toast';
-import EmptyState from '../../components/ui/EmptyState';
+import { EmptyState } from '../../components/ui/EmptyState';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 
-type Schedule = {
-    id: string;
-    title: string;
-    description: string | null;
-    frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
-    start_date: string;
-    next_run: string;
-    last_run: string | null;
-    priority: 'low' | 'medium' | 'high' | 'urgent';
-    is_active: boolean;
-    branch_id: string;
-    branches?: { name_ar: string };
+type Schedule = Database['public']['Tables']['maintenance_schedules']['Row'] & {
+    branches: { name_ar: string } | null;
+    maintenance_assets: { name: string } | null;
 };
+
+type Asset = Database['public']['Tables']['maintenance_assets']['Row'];
 
 type Branch = {
     id: string;
@@ -27,7 +21,9 @@ type Branch = {
 const MaintenanceScheduler = () => {
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
+    const [assets, setAssets] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
+    const [fetchingAssets, setFetchingAssets] = useState(false);
     const [running, setRunning] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
@@ -41,7 +37,8 @@ const MaintenanceScheduler = () => {
         start_date: new Date().toISOString().split('T')[0],
         priority: 'medium',
         is_active: true,
-        branch_id: ''
+        branch_id: '',
+        asset_id: ''
     });
 
     useEffect(() => {
@@ -52,7 +49,7 @@ const MaintenanceScheduler = () => {
         try {
             const [schedulesRes, branchesRes] = await Promise.all([
                 supabase.from('maintenance_schedules')
-                    .select('*, branches(name_ar)')
+                    .select('*, branches(name_ar), maintenance_assets(name)')
                     .order('next_run', { ascending: true }),
                 supabase.from('branches').select('id, name_ar').order('name_ar')
             ]);
@@ -60,7 +57,7 @@ const MaintenanceScheduler = () => {
             if (schedulesRes.error) throw schedulesRes.error;
             if (branchesRes.error) throw branchesRes.error;
 
-            setSchedules(schedulesRes.data as any || []);
+            setSchedules((schedulesRes.data as unknown as Schedule[]) || []);
             setBranches(branchesRes.data || []);
         } catch (error) {
             console.error('Error fetching schedules:', error);
@@ -69,6 +66,36 @@ const MaintenanceScheduler = () => {
             setLoading(false);
         }
     };
+
+    const fetchAssets = async (branchId: string) => {
+        if (!branchId) {
+            setAssets([]);
+            return;
+        }
+        setFetchingAssets(true);
+        try {
+            const { data, error } = await supabase
+                .from('maintenance_assets')
+                .select('id, name')
+                .eq('branch_id', branchId)
+                .eq('status', 'Active')
+                .order('name');
+            if (error) throw error;
+            setAssets(data || []);
+        } catch (error) {
+            console.error('Error fetching assets:', error);
+        } finally {
+            setFetchingAssets(false);
+        }
+    };
+
+    useEffect(() => {
+        if (formData.branch_id) {
+            fetchAssets(formData.branch_id);
+        } else {
+            setAssets([]);
+        }
+    }, [formData.branch_id]);
 
     const handleRunScheduler = async () => {
         setRunning(true);
@@ -89,28 +116,32 @@ const MaintenanceScheduler = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const payload = {
-                ...formData,
-                next_run: formData.start_date // Initial next_run is start_date
-            };
-
             if (modalMode === 'add') {
-                const { error } = await supabase.from('maintenance_schedules').insert(payload as any);
+                const { error } = await supabase.from('maintenance_schedules').insert({
+                    title: formData.title,
+                    description: formData.description,
+                    frequency: formData.frequency as any,
+                    priority: formData.priority as any,
+                    is_active: formData.is_active,
+                    branch_id: formData.branch_id,
+                    asset_id: formData.asset_id || null,
+                    start_date: formData.start_date,
+                    next_run: formData.start_date
+                } as Database['public']['Tables']['maintenance_schedules']['Insert']);
                 if (error) throw error;
                 toast.success('تمت إضافة الجدول بنجاح');
             } else {
                 if (!selectedSchedule) return;
-                const { error } = await supabase
-                    .from('maintenance_schedules')
+                const { error } = await supabase.from('maintenance_schedules')
                     .update({
                         title: formData.title,
                         description: formData.description,
                         frequency: formData.frequency as any,
                         priority: formData.priority as any,
                         is_active: formData.is_active,
-                        branch_id: formData.branch_id
-                        // Note: We don't update next_run/start_date on edit usually unless explicitly handled logic
-                    })
+                        branch_id: formData.branch_id,
+                        asset_id: formData.asset_id || null
+                    } as Database['public']['Tables']['maintenance_schedules']['Update'])
                     .eq('id', selectedSchedule.id);
                 if (error) throw error;
                 toast.success('تم تحديث الجدول بنجاح');
@@ -134,7 +165,8 @@ const MaintenanceScheduler = () => {
             start_date: schedule.start_date,
             priority: schedule.priority,
             is_active: schedule.is_active,
-            branch_id: schedule.branch_id
+            branch_id: schedule.branch_id,
+            asset_id: schedule.asset_id || ''
         });
         setModalMode('edit');
         setShowModal(true);
@@ -163,7 +195,8 @@ const MaintenanceScheduler = () => {
             start_date: new Date().toISOString().split('T')[0],
             priority: 'medium',
             is_active: true,
-            branch_id: ''
+            branch_id: '',
+            asset_id: ''
         });
         setSelectedSchedule(null);
     };
@@ -280,6 +313,14 @@ const MaintenanceScheduler = () => {
                                     <span className="text-slate-400">الفرع:</span>
                                     <span className="font-bold text-slate-700">{schedule.branches?.name_ar || 'غير محدد'}</span>
                                 </div>
+                                {schedule.maintenance_assets?.name && (
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="text-slate-400">المعدة:</span>
+                                        <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
+                                            {schedule.maintenance_assets.name}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -365,7 +406,7 @@ const MaintenanceScheduler = () => {
                                     <select
                                         required
                                         value={formData.branch_id}
-                                        onChange={e => setFormData({ ...formData, branch_id: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, branch_id: e.target.value, asset_id: '' })}
                                         className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 bg-white"
                                     >
                                         <option value="">اختر الفرع</option>
@@ -374,6 +415,27 @@ const MaintenanceScheduler = () => {
                                         ))}
                                     </select>
                                 </div>
+                            </div>
+
+                            {/* Asset Selection */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">المعدة المرتبطة (اختياري)</label>
+                                <select
+                                    value={formData.asset_id}
+                                    onChange={e => setFormData({ ...formData, asset_id: e.target.value })}
+                                    disabled={!formData.branch_id || fetchingAssets}
+                                    className="w-full p-3 rounded-xl border border-slate-200 outline-none focus:border-blue-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+                                >
+                                    <option value="">
+                                        {fetchingAssets ? 'جاري التحميل...' : formData.branch_id ? 'اختر المعدة (اختياري)...' : 'يرجى اختيار الفرع أولاً'}
+                                    </option>
+                                    {assets.map(a => (
+                                        <option key={a.id} value={a.id}>{a.name}</option>
+                                    ))}
+                                </select>
+                                {formData.branch_id && assets.length === 0 && !fetchingAssets && (
+                                    <p className="text-[10px] text-amber-600 mt-1">لا توجد معدات نشطة مسجلة في هذا الفرع.</p>
+                                )}
                             </div>
 
                             <div className="flex items-center gap-2 pt-2">

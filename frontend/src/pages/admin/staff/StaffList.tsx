@@ -8,8 +8,10 @@ import {
     Briefcase,
     Loader2,
     Filter,
-    User
+    User,
+    Download
 } from 'lucide-react';
+import { exportToExcel } from '../../../utils/exportUtils';
 import { supabase } from '../../../lib/supabase';
 import type { Database } from '../../../lib/supabase';
 import StaffForm from './StaffForm';
@@ -17,6 +19,7 @@ import StaffForm from './StaffForm';
 type ProfileWithRelations = Database['public']['Tables']['profiles']['Row'] & {
     area: { name_ar: string } | null;
     sector: { name_ar: string } | null;
+    last_activity_at?: string | null;
 };
 
 const StaffList: React.FC = () => {
@@ -67,6 +70,20 @@ const StaffList: React.FC = () => {
         technician: { label: 'فني', color: 'bg-emerald-50 text-emerald-600 border-emerald-100' }
     };
 
+    const handleExport = () => {
+        const dataToExport = staff.map(s => ({
+            'الاسم': s.full_name,
+            'التخصص': s.specialization || '-',
+            'الرتبة': roleConfig[s.role]?.label || s.role,
+            'البريد الإلكتروني': s.email || '-',
+            'الهاتف': s.phone || '-',
+            'المنطقة': s.area?.name_ar || '-',
+            'القطاع': s.sector?.name_ar || '-',
+            'آخر نشاط': s.last_activity_at ? new Date(s.last_activity_at).toLocaleDateString('ar-EG') : '-'
+        }));
+        exportToExcel(dataToExport, `Staff_List_${new Date().toISOString().split('T')[0]}`);
+    };
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -74,6 +91,13 @@ const StaffList: React.FC = () => {
                     <h1 className="text-3xl font-bold text-slate-900">إدارة الموظفين</h1>
                     <p className="text-slate-500 mt-1">إدارة صلاحيات وتكليفات فرق العمل</p>
                 </div>
+                <button
+                    onClick={handleExport}
+                    className="flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200"
+                >
+                    <Download className="w-5 h-5" />
+                    تصدير اكسل
+                </button>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-8">

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
     BarChart,
     Bar,
@@ -20,11 +21,14 @@ import {
     Building2,
     TrendingUp,
     ArrowRight,
-    Loader2,
-    AlertCircle
+    AlertCircle,
+    QrCode
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { AssetQRScanner } from '../../components/assets/AssetQRScanner';
+import { Card } from '../../components/ui/Card';
+import { Skeleton } from '../../components/ui/Skeleton';
 import type { Database } from '../../lib/supabase';
 
 interface DashboardHomeProps {
@@ -35,6 +39,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
 
 const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
     const navigate = useNavigate();
+    const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
     const {
         total,
         open,
@@ -48,9 +53,31 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-                <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-                <p className="text-slate-500 font-bold">جاري تحليل البيانات...</p>
+            <div className="space-y-8 pb-20">
+                {/* Header Skeleton */}
+                <div className="flex justify-between items-center">
+                    <div className="space-y-2">
+                        <Skeleton width={200} height={32} />
+                        <Skeleton width={300} height={20} />
+                    </div>
+                    <div className="flex gap-3">
+                        <Skeleton width={120} height={48} variant="rectangular" className="rounded-2xl" />
+                        <Skeleton width={120} height={48} variant="rectangular" className="rounded-2xl" />
+                    </div>
+                </div>
+
+                {/* KPIs Skeleton */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[1, 2, 3, 4].map(i => (
+                        <Skeleton key={i} height={160} className="rounded-3xl" />
+                    ))}
+                </div>
+
+                {/* Charts Skeleton */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <Skeleton height={400} className="rounded-3xl" />
+                    <Skeleton height={400} className="rounded-3xl" />
+                </div>
             </div>
         );
     }
@@ -114,22 +141,35 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                 <div className="flex gap-3">
                     <button
                         onClick={() => navigate('/tickets/new')}
-                        className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+                        className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 shrink-0"
                     >
                         <Plus className="w-5 h-5" />
                         بلاغ جديد
                     </button>
+                    <button
+                        onClick={() => setIsQRScannerOpen(true)}
+                        className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 shrink-0"
+                    >
+                        <QrCode className="w-5 h-5" />
+                        مسح كود
+                    </button>
                     {userProfile?.role === 'admin' && (
                         <button
-                            onClick={() => navigate('/branches')}
-                            className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm"
+                            onClick={() => navigate('/admin/assets')}
+                            className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm shrink-0"
                         >
                             <Building2 className="w-5 h-5" />
-                            إدارة الفروع
+                            الأصول
                         </button>
                     )}
                 </div>
             </div>
+
+            <AssetQRScanner
+                isOpen={isQRScannerOpen}
+                onClose={() => setIsQRScannerOpen(false)}
+                onScanSuccess={(assetId) => navigate(`/tickets/new?asset_id=${assetId}`)}
+            />
 
             {/* KPI Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -155,14 +195,26 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Bar Chart: Fault Categories */}
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <Card className="p-8 space-y-6">
                     <h3 className="font-bold text-slate-800 flex items-center gap-2">
                         <TrendingUp className="w-5 h-5 text-blue-600" />
                         توزيع الأعطال حسب القسم
                     </h3>
                     <div className="h-[300px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={categoryDistribution} layout="vertical" margin={{ left: 20 }}>
+                            <BarChart
+                                data={categoryDistribution}
+                                layout="vertical"
+                                margin={{ left: 20 }}
+                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                onClick={(data: any) => {
+                                    if (data && data.activePayload && data.activePayload.length > 0) {
+                                        const categoryName = data.activePayload[0].payload.name;
+                                        navigate(`/tickets?search=${encodeURIComponent(categoryName)}`);
+                                    }
+                                }}
+                                className="cursor-pointer"
+                            >
                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                                 <XAxis type="number" hide />
                                 <YAxis
@@ -181,10 +233,10 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
-                </div>
+                </Card>
 
                 {/* Pie Chart: Status Distribution */}
-                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+                <Card className="p-8 space-y-6">
                     <h3 className="font-bold text-slate-800 flex items-center gap-2">
                         <TrendingUp className="w-5 h-5 text-emerald-600" />
                         حالة البلاغات الحالية
@@ -200,22 +252,29 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                                     outerRadius={80}
                                     paddingAngle={5}
                                     dataKey="value"
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    onClick={(data: any) => {
+                                        if (data && data.payload && data.payload.key) {
+                                            navigate(`/tickets?status=${data.payload.key}`);
+                                        }
+                                    }}
+                                    className="cursor-pointer"
                                 >
                                     {statusDistribution.map((_, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip />
-                                <Legend verticalAlign="bottom" height={36} />
+                                <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                                <Legend verticalAlign="bottom" height={36} iconType="circle" />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
-                </div>
+                </Card>
             </div>
 
             {/* Bottom Section: Recent Activity */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                <Card className="lg:col-span-2 overflow-hidden border-0">
                     <div className="p-6 border-b border-slate-50 flex items-center justify-between">
                         <h2 className="text-xl font-bold text-slate-900">أحدث النشاطات</h2>
                         <button
@@ -265,7 +324,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                             ))
                         )}
                     </div>
-                </div>
+                </Card>
 
                 {/* Quick Help/Tip */}
                 <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-xl relative overflow-hidden flex flex-col justify-center">

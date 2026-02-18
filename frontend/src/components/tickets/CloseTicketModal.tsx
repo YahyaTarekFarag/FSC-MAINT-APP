@@ -6,6 +6,7 @@ import { calculateDistance } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import DynamicForm from './DynamicForm';
 import { differenceInMinutes } from 'date-fns';
+import { TicketService } from '../../services/TicketService';
 
 type CloseTicketModalProps = {
     ticketId: string;
@@ -45,6 +46,7 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
 
     // Time Tracking
     const [startedAt, setStartedAt] = useState<string | null>(null);
+    const [assetId, setAssetId] = useState<string | null>(null);
 
     useEffect(() => {
         checkGeofenceAndDetails();
@@ -60,12 +62,17 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
                 supabase.from('spare_parts').select('*').gt('stock_quantity', 0)
             ]);
 
-            const ticketRes = await supabase.from('tickets').select('branch:branches(location_lat, location_lng), started_at').eq('id', ticketId).single();
+            const ticketRes = await supabase.from('tickets').select('asset_id, branch:branches(location_lat, location_lng), started_at').eq('id', ticketId).single();
 
             const isEnabled = (geofencingRes.data as unknown as { value: string })?.value === 'true';
             // Cast for join result
-            const branch = (ticketRes.data as unknown as { branch: { location_lat: number | null; location_lng: number | null } | null })?.branch;
-            const startedAtVal = (ticketRes.data as unknown as { started_at: string | null })?.started_at;
+            const ticketData = ticketRes.data as unknown as { asset_id: string | null, branch: { location_lat: number | null; location_lng: number | null } | null, started_at: string | null };
+            const branch = ticketData?.branch;
+            const startedAtVal = ticketData?.started_at;
+
+            if (ticketData?.asset_id) {
+                setAssetId(ticketData.asset_id);
+            }
 
             if (partsRes.data) setParts(partsRes.data);
 
@@ -121,8 +128,24 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
 
     // Removed fetchParts as it's now handled in checkGeofenceAndDetails
 
-    const handleAddPart = (part: SparePart) => {
+    const handleAddPart = async (part: SparePart) => {
         if (selectedParts.find(p => p.id === part.id)) return;
+
+        // Compatibility Check
+        if (assetId) {
+            const validation = await TicketService.validatePartCompatibility(part.id, assetId);
+            if (!validation.valid) {
+                if (validation.severity === 'error') {
+                    toast.error(validation.message || 'قطعة غير متوافقة');
+                    // Option: return; to block. Or allow with confirmation. 
+                    // Requirement implies "Logical Lockdown", so we block if error.
+                    return;
+                } else {
+                    toast(validation.message || 'تحذير توافق', { icon: '⚠️' });
+                }
+            }
+        }
+
         setSelectedParts([...selectedParts, { ...part, used_quantity: 1 }]);
         setSearchTerm('');
     };
@@ -145,7 +168,40 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
         return selectedParts.reduce((acc, part) => acc + (part.price * part.used_quantity), 0);
     };
 
+    // Live Cost Warning
+    useEffect(() => {
+        const checkCost = async () => {
+            if (assetId && selectedParts.length > 0) {
+                const total = calculateTotalCost();
+                const result = await TicketService.checkRepairCostWarning(assetId, total);
+                if (!result.valid && result.message) {
+                    toast(result.message, {
+                        icon: '💰',
+                        duration: 6000,
+                        style: {
+                            borderRadius: '10px',
+                            background: '#fff7ed',
+                            color: '#c2410c',
+                            border: '1px solid #ffedd5'
+                        },
+                    });
+                }
+            }
+        };
+        const timer = setTimeout(checkCost, 800); // Debounce
+        return () => clearTimeout(timer);
+    }, [selectedParts, assetId]);
+
     const handleSubmit = async () => {
+        // Validation: If parts are used, Asset ID is mandatory
+        if (selectedParts.length > 0 && !assetId) {
+            toast.error('لا يمكن إغلاق البلاغ مع استهلاك قطع غيار دون ربط "معدة/أصل" بالبلاغ أولاً. يرجى ربط المعدة من تفاصيل البلاغ.', {
+                duration: 5000,
+                icon: '🚫'
+            });
+            return;
+        }
+
         setSubmitting(true);
         try {
             const closedAt = new Date().toISOString();
@@ -369,6 +425,18 @@ const CloseTicketModal: React.FC<CloseTicketModalProps> = ({ ticketId, categoryI
                                 <div className="bg-slate-900 text-white p-4 rounded-xl flex justify-between items-center">
                                     <span className="font-bold">إجمالي تكلفة القطع</span>
                                     <span className="text-xl font-bold font-mono">{calculateTotalCost().toLocaleString()} ج.م</span>
+                                </div>
+                            )}
+
+                            {selectedParts.length > 0 && !assetId && (
+                                <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex items-center gap-3 animate-pulse">
+                                    <AlertTriangle className="w-6 h-6 text-red-600" />
+                                    <div>
+                                        <p className="font-bold text-red-800">تنبيه هام</p>
+                                        <p className="text-sm text-red-600">
+                                            لقد قمت بإضافة قطع غيار، ولكن هذا البلاغ غير مرتبط بأي "معدة". لن تتمكن من الإغلاق حتى يتم ربط المعدة لضمان سلامة المخزون.
+                                        </p>
+                                    </div>
                                 </div>
                             )}
                         </div>

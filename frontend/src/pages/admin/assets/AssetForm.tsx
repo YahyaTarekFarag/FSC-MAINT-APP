@@ -73,11 +73,11 @@ const AssetForm = ({ asset, onClose, onSuccess }: Props) => {
             };
 
             if (asset) {
-                const { error } = await supabase.from('assets').update(payload as any).eq('id', asset.id);
+                const { error } = await supabase.from('maintenance_assets').update(payload as any).eq('id', asset.id);
                 if (error) throw error;
                 toast.success('تم تحديث الأصل بنجاح');
             } else {
-                const { error } = await supabase.from('assets').insert(payload as any);
+                const { error } = await supabase.from('maintenance_assets').insert(payload as any);
                 if (error) throw error;
                 toast.success('تمت إضافة الأصل بنجاح');
             }

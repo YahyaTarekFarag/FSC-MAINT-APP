@@ -7,7 +7,12 @@ import {
     Loader2,
     Calendar,
     Filter,
-    FileText
+    FileText,
+    Users,
+    UserCog,
+    Store,
+    Shield,
+    Box
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
@@ -110,10 +115,51 @@ const AdminConsole: React.FC = () => {
                             color="bg-blue-50 text-blue-600"
                             onClick={() => navigate('/admin/settings/categories')}
                         />
-                        {/* ... other MasterCards ... */}
                         <MasterCard
-                            title="سجل النظام"
-                            desc="مراجعة سجلات النشاط والعمليات"
+                            title="إدارة المستخدمين"
+                            desc="إضافة وتعديل صلاحيات الموظفين والفنيين"
+                            icon={UserCog}
+                            color="bg-purple-50 text-purple-600"
+                            onClick={() => navigate('/admin/users')}
+                        />
+                        <MasterCard
+                            title="الهيكل التنظيمي"
+                            desc="إدارة القطاعات، المناطق، والفروع"
+                            icon={Users}
+                            color="bg-emerald-50 text-emerald-600"
+                            onClick={() => navigate('/admin/structure')}
+                        />
+                        <MasterCard
+                            title="المخزن والمهمات"
+                            desc="إدارة قطع الغيار والعهدة المخزنية"
+                            icon={Store}
+                            color="bg-amber-50 text-amber-600"
+                            onClick={() => navigate('/admin/inventory')}
+                        />
+                        <MasterCard
+                            title="إدارة الأصول"
+                            desc="تتبع المعدات وسجل الضمان والصيانة"
+                            icon={Box}
+                            color="bg-indigo-50 text-indigo-600"
+                            onClick={() => navigate('/admin/assets')}
+                        />
+                        <MasterCard
+                            title="جدولة الصيانة"
+                            desc="تنظيم المواعيد الدورية والزيارات الوقائية"
+                            icon={Calendar}
+                            color="bg-cyan-50 text-cyan-600"
+                            onClick={() => navigate('/admin/maintenance/schedules')}
+                        />
+                        <MasterCard
+                            title="إعدادات النظام"
+                            desc="تخصيص خيارات التطبيق والتحكم العام"
+                            icon={Shield}
+                            color="bg-slate-50 text-slate-600"
+                            onClick={() => navigate('/admin/settings/system')}
+                        />
+                        <MasterCard
+                            title="سجلات النشاط"
+                            desc="مراجعة سجلات العمليات والتغييرات"
                             icon={FileText}
                             color="bg-red-50 text-red-600"
                             onClick={() => navigate('/admin/logs')}
@@ -162,8 +208,8 @@ const AdminConsole: React.FC = () => {
                                                 </td>
                                                 <td className="p-4">
                                                     <span className={`px-2 py-1 rounded text-xs font-bold ${log.action_type === 'check_in'
-                                                            ? 'bg-emerald-50 text-emerald-600'
-                                                            : 'bg-slate-100 text-slate-600'
+                                                        ? 'bg-emerald-50 text-emerald-600'
+                                                        : 'bg-slate-100 text-slate-600'
                                                         }`}>
                                                         {log.action_type === 'check_in' ? 'تسجيل دخول' : 'تسجيل خروج'}
                                                     </span>

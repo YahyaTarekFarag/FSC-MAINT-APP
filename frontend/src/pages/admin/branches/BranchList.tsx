@@ -7,7 +7,8 @@ import {
     Trash2,
     ExternalLink,
     MapPin,
-    Loader2
+    Loader2,
+    Database
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import type { Database } from '../../../lib/supabase';
@@ -216,6 +217,13 @@ const BranchList: React.FC = () => {
                                                 </td>
                                                 <td className="p-6">
                                                     <div className="flex items-center gap-2 justify-end lg:justify-start">
+                                                        <a
+                                                            href={`/admin/assets?branch_id=${branch.id}`}
+                                                            className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-xl transition-all"
+                                                            title="أصول الفرع"
+                                                        >
+                                                            <Database className="w-4 h-4" />
+                                                        </a>
                                                         <button
                                                             onClick={() => {
                                                                 setEditingBranch(branch);

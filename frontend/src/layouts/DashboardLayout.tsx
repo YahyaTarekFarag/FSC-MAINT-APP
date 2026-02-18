@@ -9,10 +9,9 @@ import {
     LogOut,
     Menu,
     X,
-    Bell,
-    ChevronLeft,
-    Monitor,
+    Settings,
     Play,
+    ChevronLeft,
     Square,
     Loader2
 } from 'lucide-react';
@@ -25,6 +24,10 @@ import { base64ToBlob } from '../utils/imageCompressor';
 import { uploadTicketImage } from '../lib/storage';
 import { syncClosures } from '../utils/offlineSync';
 import NotificationCenter from '../components/common/NotificationCenter';
+import { AnimatePresence } from 'framer-motion';
+import { PageTransition } from '../components/ui/PageTransition';
+import { CommandPalette } from '../components/ui/CommandPalette';
+import TechnicianBottomNav from '../components/layout/TechnicianBottomNav';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
@@ -50,7 +53,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
         {
             label: 'إدارة النظام',
             path: '/admin/console',
-            icon: Monitor,
+            icon: Settings,
             show: isAdmin
         },
         {
@@ -120,7 +123,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                         quantity: p.used_quantity
                     }));
 
-                    const { error: rpcError } = await supabase.rpc('consume_parts', {
+                    const { error: rpcError } = await (supabase.rpc as any)('consume_parts', {
                         p_ticket_id: ticketId,
                         p_user_id: user.id,
                         p_parts: partsPayload
@@ -152,11 +155,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                 }
 
                 // 2. Fetch existing ticket form data to merge
-                const { data: ticket } = await supabase
-                    .from('tickets')
+                const { data: ticket } = await (supabase
+                    .from('tickets' as any)
                     .select('form_data')
                     .eq('id', ticketId)
-                    .single();
+                    .single() as any);
 
                 const mergedFormData = {
                     ...(ticket?.form_data || {}),
@@ -164,8 +167,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                 };
 
                 // 3. Update Ticket
-                const { error: updateError } = await supabase
-                    .from('tickets')
+                const { error: updateError } = await (supabase
+                    .from('tickets' as any)
                     .update({
                         status: 'closed',
                         closed_at: closedAt,
@@ -173,7 +176,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                         repair_duration: repairDuration,
                         form_data: mergedFormData
                     })
-                    .eq('id', ticketId);
+                    .eq('id', ticketId) as any);
 
                 if (updateError) throw updateError;
 
@@ -199,8 +202,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                     user_id: profile.id,
                     action_type: actionType,
                     location_lat: coords.latitude,
-                    location_lng: coords.longitude,
-                    device_info: navigator.userAgent
+                    location_lng: coords.longitude
                 }) as any);
 
             if (error) throw error;
@@ -223,12 +225,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                 />
             )}
 
-            {/* Sidebar */}
+            {/* Sidebar - Hidden on mobile if technician (uses bottom nav) */}
             <aside className={`
-        fixed inset-y-0 right-0 w-72 bg-white border-l border-slate-200 z-50 transform transition-transform duration-300 ease-in-out
-        lg:translate-x-0 lg:static lg:inset-0
-        ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
-      `}>
+                fixed inset-y-0 right-0 w-72 bg-white border-l border-slate-200 z-50 transform transition-transform duration-300 ease-in-out
+                lg:translate-x-0 lg:static lg:inset-0
+                ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
+                ${isTechnician ? 'hidden lg:block' : ''}
+            `}>
                 <div className="h-full flex flex-col">
                     {/* Sidebar Header */}
                     <div className="p-6 border-b border-slate-100 flex items-center justify-between">
@@ -290,7 +293,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                 {/* Header */}
                 <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30">
                     <button
-                        className="lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
+                        className={`lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors ${isTechnician ? 'hidden' : ''}`}
                         onClick={() => setIsSidebarOpen(true)}
                     >
                         <Menu className="w-6 h-6" />
@@ -337,10 +340,20 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-y-auto p-4 lg:p-8">
-                    <Outlet />
+                <main className="flex-1 overflow-y-auto bg-slate-50 pb-20 lg:pb-0">
+                    {/* Added padding bottom for mobile nav space */}
+                    <AnimatePresence mode="wait">
+                        <PageTransition key={location.pathname} className="p-4 lg:p-8 min-h-full">
+                            <Outlet />
+                        </PageTransition>
+                    </AnimatePresence>
                 </main>
             </div>
+
+            {/* Bottom Nav for Technicians */}
+            {isTechnician && <TechnicianBottomNav />}
+
+            <CommandPalette />
             <InstallPWA />
         </div>
     );

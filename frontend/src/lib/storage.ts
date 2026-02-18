@@ -9,6 +9,12 @@ const UPLOAD_TIMEOUT_MS = 30_000; // 30 seconds
  * @returns The public URL of the uploaded file
  */
 export async function uploadTicketImage(file: File): Promise<string> {
+    // File size validation (5MB limit)
+    const MAX_SIZE_MB = 5;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+        throw new Error(`حجم الملف كبير جداً. الحد الأقصى هو ${MAX_SIZE_MB} ميجا بايت.`);
+    }
+
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
     const filePath = `attachments/${fileName}`;

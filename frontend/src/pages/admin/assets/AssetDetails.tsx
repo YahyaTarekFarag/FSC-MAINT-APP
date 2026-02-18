@@ -56,7 +56,7 @@ const AssetDetails = () => {
             try {
                 // Fetch Asset
                 const { data: assetData, error: assetError } = await supabase
-                    .from('technician_workload_view')
+                    .from('maintenance_assets')
                     .select('*, branches(name_ar)')
                     .eq('id', id)
                     .single();

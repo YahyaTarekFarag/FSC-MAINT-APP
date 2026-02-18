@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
     ClipboardList,
     Search,
@@ -8,9 +8,15 @@ import {
     AlertCircle,
     Clock,
     ChevronLeft,
+    LayoutGrid,
+    List as ListIcon,
     Loader2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+
+import { Skeleton } from '../../components/ui/Skeleton';
 import type { Database } from '../../lib/supabase';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
@@ -23,17 +29,109 @@ interface TicketListProps {
 
 const ITEMS_PER_PAGE = 20;
 
+// Sub-component for cleaner render loop
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const TicketCard = ({ ticket, navigate, viewMode, statusColors, statusLabels, priorityColors, priorityLabels, formatDate }: any) => {
+    const getSLAStatus = (dueDateStr: string | null, status: string) => {
+        if (!dueDateStr || status === 'closed') return null;
+
+        const due = new Date(dueDateStr);
+        const now = new Date();
+        const diffMs = due.getTime() - now.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        if (diffHours < 0) {
+            return { color: 'text-red-600 bg-red-50 border-red-100', label: 'متأخر', icon: AlertCircle };
+        } else if (diffHours < 4) {
+            return { color: 'text-amber-600 bg-amber-50 border-amber-100', label: 'قارب الموعد', icon: Clock };
+        } else {
+            return { color: 'text-emerald-600 bg-emerald-50 border-emerald-100', label: 'في الموعد', icon: Clock };
+        }
+    };
+
+    const sla = getSLAStatus(ticket.due_date, ticket.status);
+
+    return (
+        <Card
+            onClick={() => navigate(`/tickets/${ticket.id}`)}
+            className={`flex relative overflow-visible group transition-all duration-300 ${viewMode === 'list'
+                ? 'flex-row items-center p-4 gap-6'
+                : 'flex-col h-full'
+                }`}
+        >
+            {/* SLA Badge - Position depends on view mode */}
+            {sla && (
+                <div className={`
+                    ${viewMode === 'list' ? 'order-last mr-auto' : 'absolute top-4 left-4'}
+                    px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 border shrink-0 ${sla.color}
+                `}>
+                    <sla.icon className="w-3 h-3" />
+                    {viewMode === 'grid' && sla.label}
+                    {viewMode === 'list' && <span className="hidden md:inline">{sla.label}</span>}
+                </div>
+            )}
+
+            <div className={`flex-1 ${viewMode === 'list' ? 'flex items-center gap-6' : 'p-6 space-y-4'}`}>
+
+                {/* Status & Priority */}
+                <div className={`flex items-center gap-2 ${viewMode === 'list' ? 'w-48 shrink-0' : 'mt-2 justify-between'}`}>
+                    <Badge className={statusColors[ticket.status]}>
+                        {statusLabels[ticket.status]}
+                    </Badge>
+                    <Badge className={priorityColors[ticket.priority]}>
+                        {priorityLabels[ticket.priority]}
+                    </Badge>
+                </div>
+
+                {/* Content */}
+                <div className={`${viewMode === 'list' ? 'flex-1 grid grid-cols-2 gap-4 items-center' : ''}`}>
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
+                            {ticket.fault_category}
+                        </h3>
+                        <div className="flex items-center gap-2 text-slate-500 text-xs mt-1">
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span>{ticket.branch?.name_ar}</span>
+                        </div>
+                    </div>
+
+                    <p className={`text-slate-600 text-sm leading-relaxed ${viewMode === 'list' ? 'line-clamp-1' : 'line-clamp-3'}`}>
+                        {ticket.description || 'لا يوجد وصف للمشكلة'}
+                    </p>
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div className={`
+                ${viewMode === 'list' ? 'w-40 shrink-0 flex justify-end' : 'p-6 bg-slate-50/50 border-t border-slate-50 rounded-b-3xl flex items-center justify-between'}
+            `}>
+                <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{formatDate(ticket.created_at)}</span>
+                </div>
+                {viewMode === 'grid' && (
+                    <div className="bg-white p-2 rounded-xl text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
+                        <ChevronLeft className="w-4 h-4" />
+                    </div>
+                )}
+            </div>
+        </Card>
+    )
+};
+
 const TicketList: React.FC<TicketListProps> = ({ userProfile }) => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [page, setPage] = useState(0);
 
-    const [filterStatus, setFilterStatus] = useState<string>('all');
+    const [filterStatus, setFilterStatus] = useState<string>(searchParams.get('status') || 'all');
     const [filterPriority, setFilterPriority] = useState<string>('all');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     const observer = useRef<IntersectionObserver | null>(null);
     const lastTicketElementRef = useCallback((node: HTMLDivElement) => {
@@ -181,7 +279,7 @@ const TicketList: React.FC<TicketListProps> = ({ userProfile }) => {
             </div>
 
             {/* Filters & Search */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+            <Card className="p-6 space-y-4">
                 <div className="flex flex-col lg:flex-row gap-4">
                     <div className="flex-1 relative">
                         <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -190,8 +288,6 @@ const TicketList: React.FC<TicketListProps> = ({ userProfile }) => {
                             placeholder="بحث في الوصف أو التصنيف..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            // Note: For server-side search, we should probably debounce this.
-                            // But keeping it simple for now as per "Step 1" requirements unless performance lags.
                             className="w-full bg-slate-50 border border-slate-200 rounded-2xl pr-12 pl-4 py-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                         />
                     </div>
@@ -226,14 +322,44 @@ const TicketList: React.FC<TicketListProps> = ({ userProfile }) => {
                             </select>
                         </div>
                     </div>
+
+                    <div className="flex items-center gap-2 border-r border-slate-200 pr-4 mr-2">
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <LayoutGrid className="w-5 h-5" />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <ListIcon className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </Card>
 
             {/* Tickets List */}
             {loading && tickets.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-4">
-                    <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-                    <p className="text-slate-500 font-medium">جاري تحميل البلاغات...</p>
+                <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
+                    {[1, 2, 3, 4, 5, 6].map(i => (
+                        <div key={i} className="bg-white rounded-3xl border border-slate-100 p-6 space-y-4">
+                            <div className="flex justify-between">
+                                <Skeleton width={80} height={24} className="rounded-full" />
+                                <Skeleton width={60} height={24} className="rounded-full" />
+                            </div>
+                            <div className="space-y-2">
+                                <Skeleton width={150} height={24} />
+                                <Skeleton width={100} height={16} />
+                            </div>
+                            <Skeleton height={60} className="w-full" />
+                            <div className="flex justify-between pt-4 border-t border-slate-50">
+                                <Skeleton width={100} height={16} />
+                                <Skeleton width={24} height={24} variant="circular" />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             ) : tickets.length === 0 ? (
                 <div className="bg-white rounded-3xl border border-slate-100 p-20 text-center space-y-4">
@@ -245,37 +371,23 @@ const TicketList: React.FC<TicketListProps> = ({ userProfile }) => {
                 </div>
             ) : (
                 <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className={`grid gap-6 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
                         {tickets.map((ticket, index) => {
-                            if (index === tickets.length - 1) {
-                                return (
-                                    <div key={ticket.id} ref={lastTicketElementRef} className="h-full">
-                                        <TicketCard
-                                            ticket={ticket}
-                                            navigate={navigate}
-                                            statusColors={statusColors}
-                                            statusLabels={statusLabels}
-                                            priorityColors={priorityColors}
-                                            priorityLabels={priorityLabels}
-                                            formatDate={formatDate}
-                                        />
-                                    </div>
-                                );
-                            } else {
-                                return (
-                                    <div key={ticket.id} className="h-full">
-                                        <TicketCard
-                                            ticket={ticket}
-                                            navigate={navigate}
-                                            statusColors={statusColors}
-                                            statusLabels={statusLabels}
-                                            priorityColors={priorityColors}
-                                            priorityLabels={priorityLabels}
-                                            formatDate={formatDate}
-                                        />
-                                    </div>
-                                );
-                            }
+                            const isLast = index === tickets.length - 1;
+                            return (
+                                <div key={ticket.id} ref={isLast ? lastTicketElementRef : undefined} className="h-full">
+                                    <TicketCard
+                                        ticket={ticket}
+                                        navigate={navigate}
+                                        viewMode={viewMode}
+                                        statusColors={statusColors}
+                                        statusLabels={statusLabels}
+                                        priorityColors={priorityColors}
+                                        priorityLabels={priorityLabels}
+                                        formatDate={formatDate}
+                                    />
+                                </div>
+                            );
                         })}
                     </div>
 
@@ -294,77 +406,6 @@ const TicketList: React.FC<TicketListProps> = ({ userProfile }) => {
             )}
         </div>
     );
-};
-
-// Sub-component for cleaner render loop
-const TicketCard = ({ ticket, navigate, statusColors, statusLabels, priorityColors, priorityLabels, formatDate }: any) => {
-    const getSLAStatus = (dueDateStr: string | null, status: string) => {
-        if (!dueDateStr || status === 'closed') return null;
-
-        const due = new Date(dueDateStr);
-        const now = new Date();
-        const diffMs = due.getTime() - now.getTime();
-        const diffHours = diffMs / (1000 * 60 * 60);
-
-        if (diffHours < 0) {
-            return { color: 'text-red-600 bg-red-50 border-red-100', label: 'متأخر', icon: AlertCircle };
-        } else if (diffHours < 4) {
-            return { color: 'text-amber-600 bg-amber-50 border-amber-100', label: 'قارب الموعد', icon: Clock };
-        } else {
-            return { color: 'text-emerald-600 bg-emerald-50 border-emerald-100', label: 'في الموعد', icon: Clock };
-        }
-    };
-
-    const sla = getSLAStatus(ticket.due_date, ticket.status);
-
-    return (
-        <div
-            onClick={() => navigate(`/tickets/${ticket.id}`)}
-            className="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 hover:border-blue-200 transition-all cursor-pointer group flex flex-col h-full relative overflow-visible"
-        >
-            {sla && (
-                <div className={`absolute top-4 left-4 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 border ${sla.color}`}>
-                    <sla.icon className="w-3 h-3" />
-                    {sla.label}
-                </div>
-            )}
-
-            <div className="p-6 flex-1 space-y-4">
-                <div className="flex items-start justify-between gap-4 mt-2">
-                    <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${statusColors[ticket.status]}`}>
-                        {statusLabels[ticket.status]}
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-[10px] font-black border ${priorityColors[ticket.priority]}`}>
-                        {priorityLabels[ticket.priority]}
-                    </div>
-                </div>
-
-                <div>
-                    <h3 className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
-                        {ticket.fault_category}
-                    </h3>
-                    <div className="flex items-center gap-2 text-slate-500 text-xs mt-1">
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span>{ticket.branch?.name_ar}</span>
-                    </div>
-                </div>
-
-                <p className="text-slate-600 text-sm line-clamp-3 leading-relaxed">
-                    {ticket.description || 'لا يوجد وصف للمشكلة'}
-                </p>
-            </div>
-
-            <div className="p-6 bg-slate-50/50 border-t border-slate-50 rounded-b-3xl flex items-center justify-between">
-                <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{formatDate(ticket.created_at)}</span>
-                </div>
-                <div className="bg-white p-2 rounded-xl text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm">
-                    <ChevronLeft className="w-4 h-4" />
-                </div>
-            </div>
-        </div>
-    )
 };
 
 export default TicketList;

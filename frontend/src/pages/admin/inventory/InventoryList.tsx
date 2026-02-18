@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Filter, AlertTriangle, Package, History, TrendingUp, X, Edit, Loader2, Upload, Download, ArrowRight, Trash2 } from 'lucide-react';
+import { Plus, Search, Filter, AlertTriangle, Package, TrendingUp, X, Edit, Loader2, Upload, Download, ArrowRight, Trash2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { logActivity } from '../../../lib/api';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
-import EmptyState from '../../../components/ui/EmptyState';
+import { EmptyState } from '../../../components/ui/EmptyState';
 
 // Types
 type SparePart = {
@@ -50,10 +50,6 @@ const InventoryList = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
-    const [_showHistoryModal, setShowHistoryModal] = useState(false);
-    const [_historyData, setHistoryData] = useState<unknown[]>([]);
-    const [_historyLoading, setHistoryLoading] = useState(false);
-
     // Restock / Modal State
     const [showRestockModal, setShowRestockModal] = useState(false);
     const [selectedPart, setSelectedPart] = useState<SparePart | null>(null);
@@ -63,33 +59,6 @@ const InventoryList = () => {
     // Delete Modal State
     const [deleteId, setDeleteId] = useState<number | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
-
-    const fetchHistory = async (partId: number) => {
-        setHistoryLoading(true);
-        try {
-            const { data, error } = await supabase
-                .from('inventory_transactions')
-                .select(`
-                    *,
-                    user:user_id(email)
-                `)
-                .eq('part_id', partId)
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            setHistoryData(data || []);
-        } catch (err) {
-            console.error('Error fetching history:', err);
-        } finally {
-            setHistoryLoading(false);
-        }
-    };
-
-    const openHistory = (part: SparePart) => {
-        setSelectedPart(part);
-        setShowHistoryModal(true);
-        fetchHistory(part.id);
-    };
 
     // Form State
     const [formData, setFormData] = useState({
@@ -154,17 +123,21 @@ const InventoryList = () => {
             };
 
             if (modalMode === 'add') {
-                const { data, error } = await supabase.from('spare_parts').insert(payload).select().single();
+                const { data, error } = await (supabase.from('spare_parts') as any).insert(payload).select().single();
                 if (error) throw error;
-                await logActivity('CREATE', 'PART', { id: data.id, ...payload });
+                setParts([data as any, ...parts]);
+                toast.success('تم إضافة قطعة الغيار بنجاح');
             } else {
                 if (!selectedPart) return;
-                const { error } = await supabase
-                    .from('spare_parts')
+                const { data, error } = await (supabase
+                    .from('spare_parts') as any)
                     .update(payload)
-                    .eq('id', selectedPart.id);
+                    .eq('id', selectedPart.id)
+                    .select()
+                    .single();
                 if (error) throw error;
-                await logActivity('UPDATE', 'PART', { id: selectedPart.id, ...payload });
+                setParts(parts.map(p => (p.id === selectedPart.id ? data as any : p)));
+                toast.success('تم تحديث قطعة الغيار بنجاح');
             }
 
             await fetchInitialData();
@@ -231,15 +204,18 @@ const InventoryList = () => {
             if (!user) throw new Error('Not authenticated');
 
             // Create transaction (Trigger will update quantity)
-            const { error } = await supabase.from('inventory_transactions').insert({
-                part_id: selectedPart.id,
-                user_id: user.id,
-                change_amount: restockAmount,
-                transaction_type: 'restock',
-                notes: 'Manual restock from Admin Console'
-            });
+            // Create transaction (Trigger will update quantity)
+            const { error: transactionError } = await (supabase
+                .from('inventory_transactions') as any)
+                .insert({
+                    part_id: selectedPart.id,
+                    user_id: user.id,
+                    change_amount: restockAmount,
+                    transaction_type: 'restock',
+                    notes: 'إعادة تعبئة يدوية'
+                });
 
-            if (error) throw error;
+            if (transactionError) throw transactionError;
 
             await logActivity('UPDATE', 'PART', {
                 id: selectedPart.id,
@@ -318,21 +294,21 @@ const InventoryList = () => {
 
                 let error = null;
                 if (partData.part_number) {
-                    const { data: existing } = await supabase
-                        .from('spare_parts')
+                    const { data: existing } = await (supabase
+                        .from('spare_parts') as any)
                         .select('id')
                         .eq('part_number', partData.part_number)
                         .single();
 
                     if (existing) {
-                        const { error: err } = await supabase.from('spare_parts').update(partData).eq('id', existing.id);
+                        const { error: err } = await (supabase.from('spare_parts') as any).update(partData).eq('id', existing.id);
                         error = err;
                     } else {
-                        const { error: err } = await supabase.from('spare_parts').insert(partData);
+                        const { error: err } = await (supabase.from('spare_parts') as any).insert(partData);
                         error = err;
                     }
                 } else {
-                    const { error: err } = await supabase.from('spare_parts').insert(partData);
+                    const { error: err } = await (supabase.from('spare_parts') as any).insert(partData);
                     error = err;
                 }
 
@@ -495,6 +471,7 @@ const InventoryList = () => {
                                 <th className="px-6 py-4 text-slate-500 font-bold text-sm">التصنيف</th>
                                 <th className="px-6 py-4 text-slate-500 font-bold text-sm">الكمية</th>
                                 <th className="px-6 py-4 text-slate-500 font-bold text-sm">السعر</th>
+                                <th className="px-6 py-4 text-slate-500 font-bold text-sm">التوافق</th>
                                 <th className="px-6 py-4 text-slate-500 font-bold text-sm">الإجراءات</th>
                             </tr>
                         </thead>
@@ -558,14 +535,18 @@ const InventoryList = () => {
                                             {part.price.toLocaleString()} ج.م
                                         </td>
                                         <td className="px-6 py-4">
+                                            <div className="max-w-[150px] truncate text-xs font-medium text-slate-500" title={part.compatible_models || ''}>
+                                                {part.compatible_models ? (
+                                                    <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 block truncate">
+                                                        {part.compatible_models}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-300 italic">عام</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
                                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => openHistory(part)}
-                                                    className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
-                                                    title="سجل الحركات"
-                                                >
-                                                    <History className="w-5 h-5" />
-                                                </button>
                                                 <button
                                                     onClick={() => openEditModal(part)}
                                                     className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg"

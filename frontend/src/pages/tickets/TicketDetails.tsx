@@ -21,7 +21,7 @@ import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/supabase';
 import TicketComments from '../../components/tickets/TicketComments';
 import CloseTicketModal from '../../components/tickets/CloseTicketModal';
-import AssetHistoryDrawer from '../../components/tickets/AssetHistoryDrawer';
+import { AssetHistoryDrawer } from '../../components/assets/AssetHistoryDrawer';
 import TechnicianRecommendation from '../../components/tickets/TechnicianRecommendation';
 import TechnicianMap from '../../pages/admin/users/TechnicianMap';
 import { useGeoLocation } from '../../hooks/useGeoLocation';
@@ -32,6 +32,7 @@ type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     form_data?: Record<string, unknown>;
     category_id?: string;
     technician?: { full_name: string | null };
+    maintenance_assets?: { name: string } | null;
 };
 
 
@@ -70,7 +71,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
         try {
             const { data, error } = await supabase
                 .from('tickets')
-                .select('*, branch:branches!inner(*), technician:technician_id(full_name)')
+                .select('*, branch:branches!inner(*), technician:technician_id(full_name), maintenance_assets(name)')
                 .eq('id', id)
                 .single();
 
@@ -89,7 +90,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
 
                 if (!qError && questions) {
                     const map: Record<string, Question> = {};
-                    questions.forEach((q) => {
+                    (questions as unknown as Question[]).forEach((q: Question) => {
                         map[q.id.toString()] = q;
                     });
                     setQuestionsMap(map);
@@ -112,11 +113,9 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
         if (!ticket || !selectedTech) return;
         setIsAssigning(true);
         try {
-            const { error } = await supabase
-                .from('tickets')
-                .update({ technician_id: selectedTech, status: 'in_progress' }) // Auto-start? Maybe just assign. Let's keep status as is or set to open/in_progress. 
-                // Usually assignment means moving to in_progress or at least 'assigned'.
-                // For now, just update technician_id.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase.from('tickets') as any)
+                .update({ technician_id: selectedTech, status: 'in_progress' })
                 .eq('id', ticket.id);
 
             if (error) throw error;
@@ -142,7 +141,8 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                 console.warn('Geolocation failed, proceeding without coordinates:', geoErr);
             }
 
-            const updateData: Database['public']['Tables']['tickets']['Update'] = {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const updateData: any = {
                 status: newStatus,
                 technician_id: userProfile?.id,
                 updated_at: new Date().toISOString()
@@ -162,8 +162,8 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                 }
             }
 
-            const { error } = await supabase
-                .from('tickets')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase.from('tickets') as any)
                 .update(updateData)
                 .eq('id', id);
 
@@ -232,14 +232,16 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
 
                 {/* Quick Actions (Technician) & History */}
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setShowHistoryDrawer(true)}
-                        className="h-14 md:h-auto bg-white text-slate-600 px-6 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all border border-slate-200 shadow-sm"
-                        title="سجل الجهاز"
-                    >
-                        <History className="w-5 h-5 text-purple-600" />
-                        <span className="hidden md:inline">سجل الجهاز</span>
-                    </button>
+                    {ticket.asset_id && (
+                        <button
+                            onClick={() => setShowHistoryDrawer(true)}
+                            className="h-14 md:h-auto bg-white text-slate-600 px-6 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all border border-slate-200 shadow-sm"
+                            title="سجل الماكينة"
+                        >
+                            <History className="w-5 h-5 text-purple-600" />
+                            <span className="hidden md:inline">سجل الماكينة</span>
+                        </button>
+                    )}
 
                     {userProfile?.role === 'technician' && ticket.status !== 'closed' && (
                         <>
@@ -542,13 +544,12 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                 />
             )}
             {/* Asset History Drawer */}
-            {ticket && (
+            {ticket && ticket.asset_id && (
                 <AssetHistoryDrawer
                     isOpen={showHistoryDrawer}
                     onClose={() => setShowHistoryDrawer(false)}
-                    branchId={ticket.branch_id}
-                    categoryId={ticket.fault_category}
-                    currentTicketId={ticket.id}
+                    assetId={ticket.asset_id}
+                    assetName={ticket.maintenance_assets?.name || 'معدة غير معروفة'}
                 />
             )}
             {/* Floating Action Buttons (Mobile) */}

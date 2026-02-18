@@ -6,7 +6,9 @@
     "migrate:dry-run": "ts-node --project tsconfig.scripts.json scripts/migrate-data.ts --dry-run",
     "migrate:yes": "ts-node --project tsconfig.scripts.json scripts/migrate-data.ts --yes",
     "migrate:brands": "ts-node --project tsconfig.scripts.json scripts/migrate-brands-only.ts",
-    "migrate:sectors-areas": "ts-node --project tsconfig.scripts.json scripts/migrate-sectors-areas.ts"
+    "migrate:sectors-areas": "ts-node --project tsconfig.scripts.json scripts/migrate-sectors-areas.ts",
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",

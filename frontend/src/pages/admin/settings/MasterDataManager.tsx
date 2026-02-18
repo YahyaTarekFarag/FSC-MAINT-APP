@@ -53,16 +53,30 @@ const MasterDataManager = () => {
 
     const fetchBrands = async () => {
         setLoading(true);
-        const { data } = await supabase.from('brands').select('*').order('name_ar');
-        setBrands(data || []);
-        setLoading(false);
+        try {
+            const { data, error } = await supabase.from('brands').select('*').order('name_ar');
+            if (error) throw error;
+            setBrands(data || []);
+        } catch (err) {
+            console.error('Error fetching brands:', err);
+            toast.error('خطأ في تحميل العلامات التجارية');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const fetchUnits = async () => {
         setLoading(true);
-        const { data } = await supabase.from('unit_types').select('*').order('name_ar');
-        setUnits(data || []);
-        setLoading(false);
+        try {
+            const { data, error } = await supabase.from('unit_types').select('*').order('name_ar');
+            if (error) throw error;
+            setUnits(data || []);
+        } catch (err) {
+            console.error('Error fetching units:', err);
+            toast.error('خطأ في تحميل الوحدات');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const fetchSettings = async () => {
@@ -75,8 +89,8 @@ const MasterDataManager = () => {
 
             if (data) {
                 for (const item of data) {
-                    if (item.key === 'sla_threshold_hours') setSlaThreshold(Number(item.value) || 24);
-                    if (item.key === 'low_stock_threshold') setLowStockThreshold(Number(item.value) || 5);
+                    if ((item as any).key === 'sla_threshold_hours') setSlaThreshold(Number((item as any).value) || 24);
+                    if ((item as any).key === 'low_stock_threshold') setLowStockThreshold(Number((item as any).value) || 5);
                 }
             }
         } catch (err) {
@@ -88,18 +102,25 @@ const MasterDataManager = () => {
 
     const handleAddBrand = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newBrandName.trim()) return;
+        const brandName = newBrandName.trim();
+        if (!brandName) return;
+
         setLoading(true);
-        const { error } = await supabase.from('brands').insert([{ name_ar: newBrandName.trim() }]);
-        if (error) {
-            toast.error('فشل إضافة العلامة التجارية');
-            console.error(error);
-        } else {
-            toast.success('تمت الإضافة بنجاح');
+        console.log('Attempting to add brand:', brandName);
+
+        try {
+            const { error } = await (supabase.from('brands') as any).insert([{ name_ar: brandName }]);
+            if (error) throw error;
+
+            toast.success('تمت إضافة العلامة التجارية بنجاح ✅');
             setNewBrandName('');
             fetchBrands();
+        } catch (error: any) {
+            console.error('Add brand failed:', error);
+            toast.error('فشل إضافة العلامة التجارية: ' + (error.message || 'خطأ غير معروف'));
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const confirmDeleteBrand = (id: string) => {
@@ -114,32 +135,44 @@ const MasterDataManager = () => {
 
     const handleDeleteBrand = async () => {
         setLoading(true);
-        const { error } = await supabase.from('brands').delete().eq('id', String(confirmState.id));
-        if (error) {
-            toast.error('فشل حذف العلامة التجارية');
-            console.error(error);
-        } else {
-            toast.success('تم الحذف بنجاح');
+        console.log('Attempting to delete brand id:', confirmState.id);
+
+        try {
+            const { error } = await supabase.from('brands').delete().eq('id', String(confirmState.id));
+            if (error) throw error;
+
+            toast.success('تم حذف العلامة التجارية بنجاح ✅');
             fetchBrands();
+        } catch (error: any) {
+            console.error('Delete brand failed:', error);
+            toast.error('فشل حذف العلامة التجارية: ' + (error.message || 'خطأ غير معروف'));
+        } finally {
+            setLoading(false);
+            closeConfirm();
         }
-        setLoading(false);
-        closeConfirm();
     };
 
     const handleAddUnit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newUnitName.trim()) return;
+        const unitName = newUnitName.trim();
+        if (!unitName) return;
+
         setLoading(true);
-        const { error } = await supabase.from('unit_types').insert([{ name_ar: newUnitName.trim() }]);
-        if (error) {
-            toast.error('فشل إضافة الوحدة');
-            console.error(error);
-        } else {
-            toast.success('تمت الإضافة بنجاح');
+        console.log('Attempting to add unit:', unitName);
+
+        try {
+            const { error } = await (supabase.from('unit_types') as any).insert([{ name_ar: unitName }]);
+            if (error) throw error;
+
+            toast.success('تمت إضافة الوحدة بنجاح ✅');
             setNewUnitName('');
             fetchUnits();
+        } catch (error: any) {
+            console.error('Add unit failed:', error);
+            toast.error('فشل إضافة الوحدة: ' + (error.message || 'خطأ غير معروف'));
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const confirmDeleteUnit = (id: number) => {
@@ -154,16 +187,21 @@ const MasterDataManager = () => {
 
     const handleDeleteUnit = async () => {
         setLoading(true);
-        const { error } = await supabase.from('unit_types').delete().eq('id', Number(confirmState.id));
-        if (error) {
-            toast.error('فشل حذف الوحدة');
-            console.error(error);
-        } else {
-            toast.success('تم الحذف بنجاح');
+        console.log('Attempting to delete unit id:', confirmState.id);
+
+        try {
+            const { error } = await supabase.from('unit_types').delete().eq('id', Number(confirmState.id));
+            if (error) throw error;
+
+            toast.success('تم حذف الوحدة بنجاح ✅');
             fetchUnits();
+        } catch (error: any) {
+            console.error('Delete unit failed:', error);
+            toast.error('فشل حذف الوحدة: ' + (error.message || 'خطأ غير معروف'));
+        } finally {
+            setLoading(false);
+            closeConfirm();
         }
-        setLoading(false);
-        closeConfirm();
     };
 
     const closeConfirm = () => {
@@ -178,12 +216,12 @@ const MasterDataManager = () => {
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
-            const { error: err1 } = await supabase.from('system_config').upsert(
+            const { error: err1 } = await (supabase.from('system_config') as any).upsert(
                 { key: 'sla_threshold_hours', value: String(slaThreshold), description: 'الحد الحرج للتذاكر بالساعات' },
                 { onConflict: 'key' }
             );
 
-            const { error: err2 } = await supabase.from('system_config').upsert(
+            const { error: err2 } = await (supabase.from('system_config') as any).upsert(
                 { key: 'low_stock_threshold', value: String(lowStockThreshold), description: 'حد تنبيه انخفاض المخزون' },
                 { onConflict: 'key' }
             );

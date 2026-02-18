@@ -14,7 +14,7 @@ export interface DashboardStats {
     open: number;
     emergency: number;
     closedToday: number;
-    statusDistribution: { name: string; value: number }[];
+    statusDistribution: { name: string; value: number; key?: string }[];
     categoryDistribution: { name: string; value: number }[];
     recentTickets: TicketWithBranch[];
     loading: boolean;
@@ -73,7 +73,7 @@ export const useDashboardStats = (userProfile: Profile | null): DashboardStats =
             // 1. KPI Calculations
             const total = allTickets.length;
             const open = allTickets.filter(t => t.status === 'open').length;
-            const emergency = allTickets.filter(t => t.priority === 'urgent' || t.priority === 'high').length;
+            const emergency = allTickets.filter(t => t.priority === 'critical' || t.priority === 'high').length;
 
             const today = new Date().toISOString().split('T')[0];
             const closedToday = allTickets.filter(t =>
@@ -87,7 +87,8 @@ export const useDashboardStats = (userProfile: Profile | null): DashboardStats =
             }, {});
             const statusDistribution = Object.entries(statusCounts).map(([status, count]) => ({
                 name: statusLabels[status] || status,
-                value: count
+                value: count,
+                key: status
             }));
 
             // 3. Category Distribution (Bar Chart)

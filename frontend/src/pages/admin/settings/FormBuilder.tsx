@@ -34,19 +34,23 @@ type Question = {
     stage: 'diagnosis' | 'closing';
 };
 
-const FormBuilder = () => {
+type FormBuilderProps = {
+    embedded?: boolean;
+};
+
+const FormBuilder = ({ embedded = false }: FormBuilderProps) => {
     const navigate = useNavigate();
     const [categories, setCategories] = useState<Category[]>([]);
-    const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
     const [questions, setQuestions] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+    const [showAddModal, setShowAddModal] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    // New Question Form State
-    const [showAddModal, setShowAddModal] = useState(false);
+    // New Question State
     const [newQuestion, setNewQuestion] = useState<{
         text: string;
-        type: Question['field_type'];
+        type: 'text' | 'number' | 'yes_no' | 'photo' | 'select';
         options: string;
         required: boolean;
         stage: 'diagnosis' | 'closing';
@@ -54,33 +58,14 @@ const FormBuilder = () => {
         text: '',
         type: 'text',
         options: '',
-        required: false,
+        required: true,
         stage: 'diagnosis'
     });
 
-    // Fetch Categories
     useEffect(() => {
         fetchCategories();
     }, []);
 
-    const fetchCategories = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('fault_categories')
-                .select('*')
-                .eq('is_active', true)
-                .order('name_ar');
-
-            if (error) throw error;
-            setCategories(data || []);
-            setLoading(false);
-        } catch (err) {
-            console.error('Error fetching categories:', err);
-            setLoading(false);
-        }
-    };
-
-    // Fetch Questions when Category changes
     useEffect(() => {
         if (selectedCategory) {
             fetchQuestions(selectedCategory.id);
@@ -89,80 +74,88 @@ const FormBuilder = () => {
         }
     }, [selectedCategory]);
 
+    const fetchCategories = async () => {
+        setLoading(true);
+        try {
+            const { data } = await supabase.from('fault_categories').select('*').order('name_ar');
+            if (data) setCategories(data as any);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const fetchQuestions = async (categoryId: string) => {
         try {
-            const { data, error } = await supabase
-                .from('category_questions' as any)
+            const { data } = await supabase
+                .from('category_questions')
                 .select('*')
                 .eq('category_id', categoryId)
-                .order('order_index', { ascending: true });
+                .order('order_index');
 
-            if (error) throw error;
-            setQuestions(data as any || []);
-        } catch (err) {
-            console.error('Error fetching questions:', err);
+            if (data) setQuestions(data as any);
+        } catch (error) {
+            console.error('Error fetching questions:', error);
         }
     };
 
     const handleAddQuestion = async () => {
-        if (!selectedCategory || !newQuestion.text.trim()) return;
-
+        if (!selectedCategory || !newQuestion.text) return;
         setSaving(true);
         try {
             const optionsArray = newQuestion.type === 'select'
                 ? newQuestion.options.split(',').map(s => s.trim()).filter(Boolean)
                 : null;
 
-            const { error } = await supabase
-                .from('category_questions' as any)
-                .insert({
-                    category_id: selectedCategory.id,
-                    question_text: newQuestion.text,
-                    field_type: newQuestion.type,
-                    options: optionsArray,
-                    is_required: newQuestion.required,
-                    stage: newQuestion.stage,
-                    order_index: questions.length // Append to end
-                } as any);
+            const { error } = await supabase.from('category_questions').insert({
+                category_id: selectedCategory.id,
+                question_text: newQuestion.text,
+                field_type: newQuestion.type,
+                options: optionsArray,
+                is_required: newQuestion.required,
+                stage: newQuestion.stage,
+                order_index: questions.length + 1
+            });
 
             if (error) throw error;
 
             await fetchQuestions(selectedCategory.id);
             setShowAddModal(false);
-            setNewQuestion({ text: '', type: 'text', options: '', required: false, stage: 'diagnosis' });
-        } catch (err) {
-            alert('فشل في إضافة السؤال');
-            console.error(err);
+            setNewQuestion({
+                text: '',
+                type: 'text',
+                options: '',
+                required: true,
+                stage: 'diagnosis'
+            });
+        } catch (error) {
+            console.error(error);
         } finally {
             setSaving(false);
         }
     };
 
     const handleDeleteQuestion = async (id: number) => {
-        if (!confirm('هل أنت متأكد من حذف هذا السؤال؟')) return;
+        if (!selectedCategory) return;
+        if (!window.confirm('هل أنت متأكد من حذف هذا السؤال؟')) return;
 
         try {
-            const { error } = await supabase
-                .from('category_questions' as any)
-                .delete()
-                .eq('id', id);
-
-            if (error) throw error;
-
-            setQuestions(prev => prev.filter(q => q.id !== id));
-        } catch (err) {
-            alert('فشل في حذف السؤال');
+            await supabase.from('category_questions').delete().eq('id', id);
+            await fetchQuestions(selectedCategory.id);
+        } catch (error) {
+            console.error(error);
         }
     };
 
     const getTypeIcon = (type: string) => {
         switch (type) {
-            case 'text': return <Type className="w-4 h-4" />;
-            case 'number': return <Hash className="w-4 h-4" />;
-            case 'yes_no': return <ToggleLeft className="w-4 h-4" />;
-            case 'photo': return <Camera className="w-4 h-4" />;
-            case 'select': return <List className="w-4 h-4" />;
-            default: return <AlertCircle className="w-4 h-4" />;
+            case 'text': return <Type className="w-3 h-3" />;
+            case 'number': return <Hash className="w-3 h-3" />;
+            case 'yes_no': return <ToggleLeft className="w-3 h-3" />;
+            case 'photo': return <Camera className="w-3 h-3" />;
+            case 'select': return <List className="w-3 h-3" />;
+            default: return <Type className="w-3 h-3" />;
         }
     };
 
@@ -172,26 +165,27 @@ const FormBuilder = () => {
             case 'number': return 'رقم';
             case 'yes_no': return 'نعم/لا';
             case 'photo': return 'صورة';
-            case 'select': return 'قائمة اختيار';
+            case 'select': return 'قائمة';
             default: return type;
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 p-4 lg:p-8 font-sans" dir="rtl">
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-8">
-                <button
-                    onClick={() => navigate('/admin/console')}
-                    className="p-2 bg-white rounded-xl hover:bg-slate-50 border border-slate-200"
-                >
-                    <ArrowRight className="w-5 h-5 text-slate-500" />
-                </button>
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900">منشئ النماذج</h1>
-                    <p className="text-slate-500 text-sm">تخصيص أسئلة التشخيص لكل تصنيف أعطال</p>
+        <div className={`font-sans ${embedded ? 'h-full' : 'min-h-screen bg-slate-50 p-4 lg:p-8'}`} dir="rtl">
+            {!embedded && (
+                <div className="flex items-center gap-4 mb-8">
+                    <button
+                        onClick={() => navigate('/admin/console')}
+                        className="p-2 bg-white rounded-xl hover:bg-slate-50 border border-slate-200"
+                    >
+                        <ArrowRight className="w-5 h-5 text-slate-500" />
+                    </button>
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900">منشئ النماذج</h1>
+                        <p className="text-slate-500 text-sm">تخصيص أسئلة التشخيص لكل تصنيف أعطال</p>
+                    </div>
                 </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
                 {/* Sidebar: Categories */}

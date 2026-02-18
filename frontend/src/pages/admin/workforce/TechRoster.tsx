@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
     Loader2, MapPin, Briefcase, Search,
-    Phone, MoreHorizontal, ArrowRightLeft
+    Phone, MoreHorizontal, ArrowRightLeft,
+    Download
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { exportToExcel } from '../../../utils/exportUtils';
 
 interface Ticket {
     id: string;
@@ -132,6 +134,20 @@ export default function TechRoster() {
         return matchesSearch && matchesStatus;
     });
 
+
+
+    const handleExport = () => {
+        const dataToExport = technicians.map(t => ({
+            'اسم الفني': t.full_name,
+            'الحالة': t.computedStatus === 'online' ? 'متاح' : t.computedStatus === 'busy' ? 'مشغول' : 'غير نشط',
+            'المنطقة': t.assigned_area?.name_ar || '-',
+            'الهاتف': t.phone || '-',
+            'إنجاز الأسبوع': t.weeklyPerformance || 0,
+            'آخر نشاط': t.last_activity_at ? new Date(t.last_activity_at).toLocaleDateString('ar-EG') : '-'
+        }));
+        exportToExcel(dataToExport, `Tech_Roster_${new Date().toISOString().split('T')[0]}`);
+    };
+
     if (loading) return (
         <div className="flex justify-center items-center h-96">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -148,6 +164,13 @@ export default function TechRoster() {
                 </div>
 
                 <div className="flex gap-2 w-full md:w-auto">
+                    <button
+                        onClick={handleExport}
+                        className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 text-sm whitespace-nowrap"
+                    >
+                        <Download className="w-4 h-4" />
+                        تصدير
+                    </button>
                     <div className="relative flex-1 md:flex-none">
                         <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" />
                         <input
@@ -180,7 +203,7 @@ export default function TechRoster() {
                         <div key={tech.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
                             {/* Status Header */}
                             <div className={`h-2 w-full ${tech.computedStatus === 'busy' ? 'bg-red-500' :
-                                    tech.computedStatus === 'online' ? 'bg-emerald-500' : 'bg-slate-300'
+                                tech.computedStatus === 'online' ? 'bg-emerald-500' : 'bg-slate-300'
                                 }`} />
 
                             <div className="p-5">
@@ -192,7 +215,7 @@ export default function TechRoster() {
                                                 {tech.full_name?.charAt(0)}
                                             </div>
                                             <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${tech.computedStatus === 'busy' ? 'bg-red-500' :
-                                                    tech.computedStatus === 'online' ? 'bg-emerald-500' : 'bg-slate-300'
+                                                tech.computedStatus === 'online' ? 'bg-emerald-500' : 'bg-slate-300'
                                                 }`} />
                                         </div>
                                         <div>

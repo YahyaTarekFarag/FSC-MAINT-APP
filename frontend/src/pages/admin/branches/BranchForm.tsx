@@ -9,6 +9,9 @@ import {
     CheckCircle2,
     AlertCircle
 } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import toast from 'react-hot-toast';
 import { supabase } from '../../../lib/supabase';
 import type { Database } from '../../../lib/supabase';
 
@@ -78,7 +81,8 @@ const BranchForm: React.FC<BranchFormProps> = ({ branch, onClose, onSuccess }) =
             setSectors(sectorsRes.data || []);
             setAreas(areasRes.data || []);
         } catch (err) {
-            console.error('Error fetching metadata:', err);
+            console.error('Error fetching metadata (BranchForm):', err);
+            toast.error('خطأ في تحميل بيانات الإعداد (العلامات، القطاعات، المناطق)');
         } finally {
             setInitialLoading(false);
         }
@@ -92,30 +96,38 @@ const BranchForm: React.FC<BranchFormProps> = ({ branch, onClose, onSuccess }) =
         try {
             if (branch) {
                 // Update
-                const { error } = await (supabase.from('branches') as any)
+                const { error } = await supabase.from('branches')
                     .update({
                         name_ar: formData.name_ar,
                         brand_id: formData.brand_id,
                         area_id: formData.area_id,
-                        google_map_link: formData.google_map_link
-                    })
+                        google_map_link: formData.google_map_link,
+                        location_lat: formData.location_lat,
+                        location_lng: formData.location_lng,
+                        is_active: formData.is_active
+                    } as any)
                     .eq('id', branch.id);
                 if (error) throw error;
+                toast.success('تمت تحديث بيانات الفرع بنجاح ✅');
             } else {
                 // Insert
-                const { error } = await (supabase.from('branches') as any)
+                const { error } = await supabase.from('branches')
                     .insert({
                         name_ar: formData.name_ar,
                         brand_id: formData.brand_id,
                         area_id: formData.area_id,
-                        google_map_link: formData.google_map_link
-                    });
+                        google_map_link: formData.google_map_link,
+                        location_lat: formData.location_lat,
+                        location_lng: formData.location_lng,
+                        is_active: formData.is_active
+                    } as any);
                 if (error) throw error;
+                toast.success('تمت إضافة الفرع الجديد بنجاح ✅');
             }
             onSuccess();
         } catch (err: any) {
             console.error('Error saving branch:', err);
-            alert('خطأ في حفظ بيانات الفرع: ' + err.message);
+            toast.error('خطأ في حفظ بيانات الفرع: ' + (err.message || 'خطأ غير معروف'));
         } finally {
             setLoading(false);
         }

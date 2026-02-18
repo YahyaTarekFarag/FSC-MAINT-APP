@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { adminCreateUser, adminUpdateUser, adminDeleteUser } from '../../../lib/api';
 import {
     Search, Plus, User, Shield, Briefcase,
     Edit2, Power, X, Loader2, Save, Phone
 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { adminCreateUser, adminUpdateUser, adminDeleteUser } from '../../../lib/api';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 
 type Profile = {
     id: string;
@@ -53,13 +55,48 @@ const UserManager = () => {
     const [formData, setFormData] = useState<UserFormData>({});
     const [saving, setSaving] = useState(false);
 
+    // Confirm Dialog State
+    const [confirmState, setConfirmState] = useState<{
+        isOpen: boolean;
+        type: 'status' | 'delete';
+        user: Profile | null;
+        title: string;
+        message: string;
+    }>({
+        isOpen: false,
+        type: 'status',
+        user: null,
+        title: '',
+        message: ''
+    });
+
     useEffect(() => {
         fetchData();
     }, []);
 
+    const filterUsers = useCallback(() => {
+        let result = users;
+
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            result = result.filter(u =>
+                (u.full_name?.toLowerCase().includes(term)) ||
+                (u.email?.toLowerCase().includes(term)) ||
+                (u.phone?.includes(term))
+            );
+        }
+
+        if (roleFilter !== 'all') {
+            result = result.filter(u => u.role === roleFilter);
+        }
+
+        setFilteredUsers(result);
+    }, [users, searchTerm, roleFilter]);
+
     useEffect(() => {
         filterUsers();
-    }, [users, searchTerm, roleFilter, branchFilter]);
+    }, [filterUsers]);
+
 
     const fetchData = async () => {
         setLoading(true);
@@ -88,28 +125,6 @@ const UserManager = () => {
         }
     };
 
-    const filterUsers = useCallback(() => {
-        let result = users;
-
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            result = result.filter(u =>
-                (u.full_name?.toLowerCase().includes(term)) ||
-                (u.email?.toLowerCase().includes(term)) ||
-                (u.phone?.includes(term))
-            );
-        }
-
-        if (roleFilter !== 'all') {
-            result = result.filter(u => u.role === roleFilter);
-        }
-
-        setFilteredUsers(result);
-    }, [users, searchTerm, roleFilter]);
-
-    useEffect(() => {
-        filterUsers();
-    }, [filterUsers]);
 
     const handleEditClick = (user: Profile) => {
         setSelectedUser(user);
@@ -139,15 +154,12 @@ const UserManager = () => {
                     role: formData.role,
                     status: formData.status,
                     assigned_area_id: formData.assigned_area_id
-                })
+                } as any)
                 .eq('id', selectedUser.id);
 
             if (profileError) throw profileError;
 
             // 1.5 Update Email in Auth (Separate Payload)
-            let emailUpdated = false;
-            let emailError: string | null = null;
-
             if (formData.email && formData.email !== selectedUser.email) {
                 const { error: authEmailError } = await adminUpdateUser({
                     targetUserId: selectedUser.id,
@@ -155,10 +167,7 @@ const UserManager = () => {
                 });
 
                 if (authEmailError) {
-                    emailError = authEmailError;
                     console.error('Email update failed:', authEmailError);
-                } else {
-                    emailUpdated = true;
                 }
             }
 
@@ -184,41 +193,55 @@ const UserManager = () => {
             setShowEditModal(false);
 
             if (passwordError) {
-                alert(`تم تحديث البيانات الشخصية بنجاح، ولكن فشل تغيير كلمة المرور: ${passwordError}\nيرجى التأكد من تشغيل Edge Functions.`);
+                toast.error(`تم تحديث البيانات، ولكن فشل تغيير كلمة المرور: ${passwordError}`);
             } else if (passwordUpdated) {
-                alert('تم تحديث البيانات وكلمة المرور بنجاح');
+                toast.success('تم تحديث البيانات وكلمة المرور بنجاح ✅');
             } else {
-                alert('تم تحديث البيانات بنجاح');
+                toast.success('تم تحديث بيانات المستخدم بنجاح ✅');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error updating user:', error);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            alert(`فشل تحديث البيانات: ${(error as any).message || error}`);
+            toast.error(`فشل تحديث البيانات: ${error.message || 'خطأ غير معروف'}`);
         } finally {
             setSaving(false);
         }
     };
 
-    const handleToggleStatus = async (user: Profile) => {
+    const handleToggleStatus = (user: Profile) => {
+        const isCurrentlySuspended = user.status === 'suspended';
+        setConfirmState({
+            isOpen: true,
+            type: 'status',
+            user,
+            title: isCurrentlySuspended ? 'إعادة تفعيل الحساب' : 'إيقاف الحساب',
+            message: isCurrentlySuspended
+                ? `هل تود إعادة تفعيل حساب ${user.full_name}؟`
+                : `هل أنت متأكد من إيقاف حساب ${user.full_name}؟`
+        });
+    };
+
+    const performToggleStatus = async () => {
+        if (!confirmState.user) return;
+        const user = confirmState.user;
         const newStatus = user.status === 'suspended' ? 'active' : 'suspended';
-        const confirmMsg = newStatus === 'suspended'
-            ? `هل أنت متأكد من إيقاف حساب ${user.full_name}؟`
-            : `هل تود إعادة تفعيل حساب ${user.full_name}؟`;
 
-        if (!confirm(confirmMsg)) return;
-
+        setSaving(true);
         try {
             const { error } = await supabase
                 .from('profiles')
-                .update({ status: newStatus })
+                .update({ status: newStatus } as any)
                 .eq('id', user.id);
 
             if (error) throw error;
 
-            setUsers(users.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
-        } catch (error) {
+            setUsers(users.map(u => u.id === user.id ? { ...u, status: newStatus as any } : u));
+            toast.success(`تم ${newStatus === 'suspended' ? 'إيقاف' : 'إعادة تفعيل'} المستخدم بنجاح ✅`);
+        } catch (error: any) {
             console.error('Error toggling status:', error);
-            alert('خطأ في تغيير الحالة');
+            toast.error('خطأ في تغيير حالة المستخدم: ' + (error.message || ''));
+        } finally {
+            setSaving(false);
+            setConfirmState(prev => ({ ...prev, isOpen: false }));
         }
     };
 
@@ -237,44 +260,49 @@ const UserManager = () => {
 
             if (error) throw new Error(error);
 
-            alert('تم إنشاء المستخدم بنجاح');
+            toast.success('تم إنشاء المستخدم الجديد بنجاح ✅');
             setShowCreateModal(false);
             setFormData({}); // Reset form
             fetchData(); // Refresh list
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error creating user:', error);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            alert(`فشل إنشاء المستخدم: ${(error as any).message}`);
+            toast.error(`فشل إنشاء المستخدم: ${error.message || 'خطأ غير معروف'}`);
         } finally {
             setSaving(false);
         }
     };
 
-    const handleDeleteUser = async (user: Profile) => {
-        if (!confirm(`هل أنت متأكد من حذف حساب ${user.full_name} نهائياً؟\nلا يمكن التراجع عن هذا الإجراء.`)) return;
+    const handleDeleteUser = (user: Profile) => {
+        setConfirmState({
+            isOpen: true,
+            type: 'delete',
+            user,
+            title: 'حذف المستخدم',
+            message: `هل أنت متأكد من حذف حساب ${user.full_name} نهائياً؟\nلا يمكن التراجع عن هذا الإجراء.`
+        });
+    };
 
-        setLoading(true); // Global loading or specific? Let's use loading for safety
+    const performDeleteUser = async () => {
+        if (!confirmState.user) return;
+        const user = confirmState.user;
+        setSaving(true);
         try {
-            const { error } = await supabase.from('profiles').delete().eq('id', user.id);
-            // Note: Direct delete from profiles depends on RLS. Ideally we call the edge function 
-            // which deletes from Auth (cascading to Profile).
-
             const { error: apiError } = await adminDeleteUser(user.id);
 
             if (apiError) {
-                // Fallback: If edge function fails (env issue), try direct DB delete (if RLS allows)
                 console.warn('Edge function delete failed, trying direct DB delete...', apiError);
                 const { error: dbError } = await supabase.from('profiles').delete().eq('id', user.id);
                 if (dbError) throw new Error(apiError + " & " + dbError.message);
             }
 
-            alert('تم حذف المستخدم بنجاح');
+            toast.success('تم حذف المستخدم نهائياً بنجاح ✅');
             await fetchData();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error deleting user:', error);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            alert(`فشل حذف المستخدم: ${(error as any).message || error}`);
-            setLoading(false);
+            toast.error(`فشل حذف المستخدم: ${error.message || 'خطأ غير معروف'}`);
+        } finally {
+            setSaving(false);
+            setConfirmState(prev => ({ ...prev, isOpen: false }));
         }
     };
 
@@ -600,6 +628,20 @@ const UserManager = () => {
                     </div>
                 </div>
             )}
+
+            <ConfirmDialog
+                isOpen={confirmState.isOpen}
+                title={confirmState.title}
+                message={confirmState.message}
+                confirmLabel={confirmState.type === 'delete' ? 'حذف نهائي' : 'تأكيد'}
+                variant={confirmState.type === 'delete' ? 'danger' : 'info'}
+                isLoading={saving}
+                onConfirm={() => {
+                    if (confirmState.type === 'delete') performDeleteUser();
+                    else performToggleStatus();
+                }}
+                onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     );
 };

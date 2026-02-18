@@ -228,8 +228,8 @@ export type Database = {
                     id: string;
                     branch_id: string;
                     technician_id: string | null;
-                    status: 'open' | 'in_progress' | 'closed';
-                    priority: 'low' | 'medium' | 'high' | 'urgent';
+                    status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled';
+                    priority: 'low' | 'medium' | 'high' | 'critical';
                     fault_category: string;
                     fault_subcategory: string | null;
                     description: string | null;
@@ -256,9 +256,9 @@ export type Database = {
                     branch_id: string;
                     technician_id?: string | null;
                     status?: 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled';
-                    priority?: 'low' | 'medium' | 'high' | 'critical';
+                    priority: 'low' | 'medium' | 'high' | 'critical';
                     fault_category: string;
-                    description: string;
+                    description: string | null;
                     created_at?: string;
                     updated_at?: string;
                     repair_cost?: number;
@@ -279,7 +279,7 @@ export type Database = {
                     status?: 'open' | 'in_progress' | 'resolved' | 'closed' | 'cancelled';
                     priority?: 'low' | 'medium' | 'high' | 'critical';
                     fault_category?: string;
-                    description?: string;
+                    description?: string | null;
                     created_at?: string;
                     updated_at?: string;
                     repair_cost?: number;
@@ -305,6 +305,13 @@ export type Database = {
                         columns: ["technician_id"];
                         isOneToOne: false;
                         referencedRelation: "profiles";
+                        referencedColumns: ["id"];
+                    },
+                    {
+                        foreignKeyName: "tickets_asset_id_fkey";
+                        columns: ["asset_id"];
+                        isOneToOne: false;
+                        referencedRelation: "maintenance_assets";
                         referencedColumns: ["id"];
                     }
                 ];
@@ -466,19 +473,22 @@ export type Database = {
                     }
                 ];
             };
-            assets: {
+            maintenance_assets: {
                 Row: {
                     id: string;
                     branch_id: string;
                     name: string;
-                    category_id: string | null;
                     serial_number: string | null;
-                    model_number: string | null;
+                    brand_id: string | null;
+                    status: 'Active' | 'Under Repair' | 'Scrapped';
                     purchase_date: string | null;
                     warranty_expiry: string | null;
-                    status: 'active' | 'maintenance' | 'retired' | 'disposed';
                     notes: string | null;
-                    qr_code: string | null;
+                    model_number: string | null;
+                    location_details: string | null;
+                    technical_specs: Json | null;
+                    category_id: string | null;
+                    purchase_price: number | null;
                     created_at: string;
                     updated_at: string;
                 };
@@ -486,14 +496,15 @@ export type Database = {
                     id?: string;
                     branch_id: string;
                     name: string;
-                    category_id?: string | null;
                     serial_number?: string | null;
-                    model_number?: string | null;
+                    brand_id?: string | null;
+                    status?: 'Active' | 'Under Repair' | 'Scrapped';
                     purchase_date?: string | null;
                     warranty_expiry?: string | null;
-                    status?: 'active' | 'maintenance' | 'retired' | 'disposed';
                     notes?: string | null;
-                    qr_code?: string | null;
+                    model_number?: string | null;
+                    location_details?: string | null;
+                    technical_specs?: Json | null;
                     created_at?: string;
                     updated_at?: string;
                 };
@@ -501,23 +512,31 @@ export type Database = {
                     id?: string;
                     branch_id?: string;
                     name?: string;
-                    category_id?: string | null;
                     serial_number?: string | null;
-                    model_number?: string | null;
+                    brand_id?: string | null;
+                    status?: 'Active' | 'Under Repair' | 'Scrapped';
                     purchase_date?: string | null;
                     warranty_expiry?: string | null;
-                    status?: 'active' | 'maintenance' | 'retired' | 'disposed';
                     notes?: string | null;
-                    qr_code?: string | null;
+                    model_number?: string | null;
+                    location_details?: string | null;
+                    technical_specs?: Json | null;
                     created_at?: string;
                     updated_at?: string;
                 };
                 Relationships: [
                     {
-                        foreignKeyName: "assets_branch_id_fkey";
+                        foreignKeyName: "maintenance_assets_branch_id_fkey";
                         columns: ["branch_id"];
                         isOneToOne: false;
                         referencedRelation: "branches";
+                        referencedColumns: ["id"];
+                    },
+                    {
+                        foreignKeyName: "maintenance_assets_brand_id_fkey";
+                        columns: ["brand_id"];
+                        isOneToOne: false;
+                        referencedRelation: "brands";
                         referencedColumns: ["id"];
                     }
                 ];
@@ -537,6 +556,7 @@ export type Database = {
                     created_by: string | null;
                     created_at: string;
                     updated_at: string;
+                    asset_id: string | null;
                 };
                 Insert: {
                     id?: string;
@@ -552,6 +572,7 @@ export type Database = {
                     created_by?: string | null;
                     created_at?: string;
                     updated_at?: string;
+                    asset_id?: string | null;
                 };
                 Update: {
                     id?: string;
@@ -567,6 +588,7 @@ export type Database = {
                     created_by?: string | null;
                     created_at?: string;
                     updated_at?: string;
+                    asset_id?: string | null;
                 };
                 Relationships: [
                     {
@@ -574,6 +596,13 @@ export type Database = {
                         columns: ["branch_id"];
                         isOneToOne: false;
                         referencedRelation: "branches";
+                        referencedColumns: ["id"];
+                    },
+                    {
+                        foreignKeyName: "maintenance_schedules_asset_id_fkey";
+                        columns: ["asset_id"];
+                        isOneToOne: false;
+                        referencedRelation: "maintenance_assets";
                         referencedColumns: ["id"];
                     }
                 ];
@@ -588,6 +617,18 @@ export type Database = {
                     last_lat: number | null;
                     last_lng: number | null;
                     active_tickets: number;
+                };
+            };
+            v_branch_performance: {
+                Row: {
+                    branch_id: string;
+                    branch_name: string;
+                    total_tickets: number;
+                    closed_tickets: number;
+                    total_maintenance_cost: number;
+                    avg_downtime_hours: number;
+                    avg_asset_health_score: number;
+                    monthly_trend: Json;
                 };
             };
         };
@@ -635,6 +676,10 @@ export type Database = {
             generate_scheduled_tickets: {
                 Args: Record<string, never>;
                 Returns: number;
+            };
+            get_asset_statistics: {
+                Args: { target_asset_id: string };
+                Returns: Json;
             };
         };
         Enums: {

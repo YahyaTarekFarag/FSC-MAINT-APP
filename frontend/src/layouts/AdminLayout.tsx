@@ -17,7 +17,8 @@ import {
     Briefcase,
     UserCog,
     FileInput,
-    Map
+    Map,
+    Clock
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -64,7 +65,9 @@ const AdminLayout = () => {
         { path: '/admin/map', icon: Map, label: 'الخريطة المباشرة' },
         { path: '/admin/users', icon: UserCog, label: 'إدارة المستخدمين' },
         { path: '/admin/inventory', icon: Store, label: 'المخزن' },
-        { path: '/admin/structure', icon: Database, label: 'الهيكل التنظيمي' },
+        { path: '/admin/assets', icon: Database, label: 'الأصول' },
+        { path: '/admin/maintenance/schedules', icon: Clock, label: 'الصيانة الوقائية' },
+        { path: '/admin/structure', icon: Users, label: 'الهيكل التنظيمي' },
         { path: '/admin/settings/forms', icon: FileInput, label: 'نماذج الإغلاق' },
         { path: '/admin/settings/master-data', icon: Settings, label: 'البيانات الأساسية' },
         { path: '/admin/settings/system', icon: Shield, label: 'إعدادات النظام' },
