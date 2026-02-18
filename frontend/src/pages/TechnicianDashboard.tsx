@@ -3,17 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
     Calendar,
     MapPin,
-    Clock,
     ChevronRight,
-    AlertCircle,
     CheckCircle2,
-    Play,
-    Navigation,
-    Search
+    Play
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import type { Database } from '../../lib/supabase';
-import { useGeoLocation } from '../../hooks/useGeoLocation';
+import { supabase } from '../lib/supabase';
+import type { Database } from '../lib/supabase';
+import { useGeoLocation } from '../hooks/useGeoLocation';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     branch: { name_ar: string; location_lat?: number; location_lng?: number };
@@ -24,7 +20,7 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
     const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
     const [todayTickets, setTodayTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(true);
-    const { getCoordinates } = useGeoLocation();
+    const { getCoordinates } = useGeoLocation(); // Placeholder for future distance check
 
     useEffect(() => {
         fetchDashboardData();
@@ -45,7 +41,6 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
             setActiveTicket(active as any);
 
             // 2. Get Today's Assigned Tickets (Open)
-            const today = new Date().toISOString().split('T')[0];
             const { data: todayList } = await supabase
                 .from('tickets')
                 .select('*, branch:branches(name_ar)')
@@ -115,7 +110,7 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
                             <div className="relative z-10">
                                 <div className="flex justify-between items-start mb-4">
                                     <span className="bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
-                                        #{activeTicket.ticket_id}
+                                        #{activeTicket.id.substring(0, 8)}
                                     </span>
                                     <span className="animate-pulse w-3 h-3 bg-green-400 rounded-full shadow-[0_0_10px_rgba(74,222,128,0.5)]"></span>
                                 </div>
@@ -157,7 +152,7 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
                                     className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer"
                                 >
                                     <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500 font-bold text-lg shrink-0">
-                                        {ticket.priority === 'urgent' ? '🚨' : '🔧'}
+                                        {ticket.priority === 'critical' ? '🚨' : '🔧'}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <h4 className="font-bold text-slate-900 truncate">{ticket.fault_category}</h4>
