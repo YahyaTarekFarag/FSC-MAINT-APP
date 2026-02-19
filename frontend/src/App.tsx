@@ -22,7 +22,7 @@ import TicketDetails from './pages/tickets/TicketDetails';
 // Lazy Components (Admin & Heavy Modules)
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
 const TechnicianLayout = lazy(() => import('./layouts/TechnicianLayout'));
-const DashboardAnalytics = lazy(() => import('./pages/admin/DashboardAnalytics'));
+const DashboardAnalytics = lazy(() => import('./pages/admin/AnalyticsDashboard'));
 const AdminConsole = lazy(() => import('./pages/admin/AdminConsole'));
 const SystemSettings = lazy(() => import('./pages/admin/settings/SystemSettings'));
 const BranchList = lazy(() => import('./pages/admin/branches/BranchList'));
@@ -145,7 +145,7 @@ function App() {
                 } />
 
                 <Route path="tickets/new" element={<NewTicket userProfile={profile} />} />
-                <Route path="tickets" element={<TicketList userProfile={profile} />} />
+                <Route path="tickets" element={<TicketList />} />
 
                 {/* Conditional Routing for Ticket Details */}
                 <Route path="tickets/:id" element={
@@ -160,7 +160,7 @@ function App() {
                   <Route path="admin" element={<AdminLayout />}>
                     <Route path="dashboard" element={<DashboardAnalytics />} />
                     <Route path="console" element={<AdminConsole />} />
-                    <Route path="tickets" element={<TicketList userProfile={profile} />} />
+                    <Route path="tickets" element={<TicketList />} />
                     <Route path="workforce/roster" element={<TechRoster />} />
                     <Route path="workforce/assignments" element={<AssignmentManager />} />
                     <Route path="map" element={<TechnicianMap />} />

@@ -9,6 +9,10 @@ module.exports = {
             fontFamily: {
                 sans: ['IBM Plex Sans Arabic', 'sans-serif'],
             },
+            colors: {
+                GlassSurface: 'rgba(255, 255, 255, 0.1)',
+                GlassBorder: 'rgba(255, 255, 255, 0.2)',
+            },
         },
     },
     plugins: [

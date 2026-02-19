@@ -27,7 +27,6 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { AssetQRScanner } from '../../components/assets/AssetQRScanner';
-import { Card } from '../../components/ui/Card';
 import { Skeleton } from '../../components/ui/Skeleton';
 import type { Database } from '../../lib/supabase';
 
@@ -53,30 +52,21 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
 
     if (loading) {
         return (
-            <div className="space-y-8 pb-20">
-                {/* Header Skeleton */}
+            <div className="min-h-screen bg-[#0f172a] p-8 space-y-8 pb-20">
                 <div className="flex justify-between items-center">
                     <div className="space-y-2">
-                        <Skeleton width={200} height={32} />
-                        <Skeleton width={300} height={20} />
-                    </div>
-                    <div className="flex gap-3">
-                        <Skeleton width={120} height={48} variant="rectangular" className="rounded-2xl" />
-                        <Skeleton width={120} height={48} variant="rectangular" className="rounded-2xl" />
+                        <Skeleton width={200} height={32} className="bg-white/5" />
+                        <Skeleton width={300} height={20} className="bg-white/5" />
                     </div>
                 </div>
-
-                {/* KPIs Skeleton */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {[1, 2, 3, 4].map(i => (
-                        <Skeleton key={i} height={160} className="rounded-3xl" />
+                        <Skeleton key={i} height={160} className="rounded-3xl bg-white/5" />
                     ))}
                 </div>
-
-                {/* Charts Skeleton */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <Skeleton height={400} className="rounded-3xl" />
-                    <Skeleton height={400} className="rounded-3xl" />
+                    <Skeleton height={400} className="rounded-3xl bg-white/5" />
+                    <Skeleton height={400} className="rounded-3xl bg-white/5" />
                 </div>
             </div>
         );
@@ -87,41 +77,45 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
             label: 'إجمالي البلاغات',
             value: total,
             icon: ClipboardList,
-            color: 'bg-blue-600',
-            shadow: 'shadow-blue-100',
+            color: 'from-blue-600/20 to-blue-900/40',
+            border: 'border-blue-500/30',
+            iconColor: 'text-blue-400',
             trend: '+5%'
         },
         {
             label: 'بلاغات مفتوحة',
             value: open,
             icon: Clock,
-            color: 'bg-amber-500',
-            shadow: 'shadow-amber-100',
+            color: 'from-amber-500/20 to-amber-900/40',
+            border: 'border-amber-500/30',
+            iconColor: 'text-amber-400',
             trend: 'نشط'
         },
         {
             label: 'حالات طارئة',
             value: emergency,
             icon: AlertTriangle,
-            color: 'bg-red-500',
-            shadow: 'shadow-red-100',
+            color: 'from-red-500/20 to-red-900/40',
+            border: 'border-red-500/30',
+            iconColor: 'text-red-400',
             trend: 'هام'
         },
         {
             label: 'أغلق اليوم',
             value: closedToday,
             icon: CheckCircle2,
-            color: 'bg-emerald-500',
-            shadow: 'shadow-emerald-100',
+            color: 'from-emerald-500/20 to-emerald-900/40',
+            border: 'border-emerald-500/30',
+            iconColor: 'text-emerald-400',
             trend: 'ممتاز'
         }
     ];
 
     const priorityColors: Record<string, string> = {
-        low: 'bg-slate-100 text-slate-500',
-        medium: 'bg-blue-50 text-blue-600',
-        high: 'bg-orange-50 text-orange-600',
-        urgent: 'bg-red-50 text-red-600'
+        low: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+        medium: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+        high: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+        urgent: 'bg-red-500/10 text-red-400 border-red-500/20'
     };
 
     const statusLabels: Record<string, string> = {
@@ -131,34 +125,34 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-20">
+        <div className="min-h-screen bg-[#0f172a] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-[#0f172a] to-black p-4 md:p-8 font-sans rtl space-y-12 pb-24" dir="rtl">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900">لوحة المتابعة</h1>
-                    <p className="text-slate-500 mt-1">نظرة شاملة على أداء الصيانة والتشغيل</p>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+                <div className="space-y-2">
+                    <h1 className="text-4xl font-black text-white tracking-tight">المركز العصبي</h1>
+                    <p className="text-white/40 font-medium">تحليلات الأداء السيادي والتشغيل الفوري</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-4">
                     <button
                         onClick={() => navigate('/tickets/new')}
-                        className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 shrink-0"
+                        className="flex-1 lg:flex-none bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-900/40 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 group"
                     >
-                        <Plus className="w-5 h-5" />
+                        <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform" />
                         بلاغ جديد
                     </button>
                     <button
                         onClick={() => setIsQRScannerOpen(true)}
-                        className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 shrink-0"
+                        className="flex-1 lg:flex-none bg-white/5 backdrop-blur-md border border-white/10 text-white px-8 py-4 rounded-2xl font-black hover:bg-white/10 transition-all flex items-center justify-center gap-2"
                     >
-                        <QrCode className="w-5 h-5" />
+                        <QrCode className="w-6 h-6 text-blue-400" />
                         مسح كود
                     </button>
                     {userProfile?.role === 'admin' && (
                         <button
                             onClick={() => navigate('/admin/assets')}
-                            className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm shrink-0"
+                            className="w-full lg:w-auto bg-white/5 backdrop-blur-md border border-white/10 text-white/60 px-8 py-4 rounded-2xl font-black hover:text-white transition-all flex items-center justify-center gap-2"
                         >
-                            <Building2 className="w-5 h-5" />
+                            <Building2 className="w-6 h-6" />
                             الأصول
                         </button>
                     )}
@@ -174,177 +168,149 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
             {/* KPI Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {kpis.map((kpi, idx) => (
-                    <div key={idx} className={`${kpi.color} p-6 rounded-3xl text-white shadow-xl ${kpi.shadow} relative overflow-hidden group`}>
-                        <div className="relative z-10 flex flex-col justify-between h-full min-h-[120px]">
+                    <div key={idx} className={`bg-gradient-to-br ${kpi.color} ${kpi.border} border backdrop-blur-2xl p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group transition-all duration-500 hover:scale-[1.02]`}>
+                        <div className="relative z-10 flex flex-col justify-between h-full min-h-[140px]">
                             <div className="flex justify-between items-start">
-                                <kpi.icon className="w-8 h-8 opacity-80 group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-black bg-white/20 px-2 py-1 rounded-full uppercase tracking-tighter">
+                                <div className={`p-4 rounded-2xl bg-white/5 ${kpi.iconColor}`}>
+                                    <kpi.icon className="w-8 h-8 group-hover:scale-110 transition-transform" />
+                                </div>
+                                <span className="text-[10px] font-black bg-white/10 border border-white/10 px-3 py-1 rounded-full uppercase tracking-tighter text-white/60">
                                     {kpi.trend}
                                 </span>
                             </div>
-                            <div>
-                                <p className="text-4xl font-black mb-1">{kpi.value}</p>
-                                <p className="text-white/80 text-xs font-bold uppercase tracking-widest">{kpi.label}</p>
+                            <div className="mt-6">
+                                <p className="text-5xl font-black mb-1">{kpi.value}</p>
+                                <p className="text-white/40 text-xs font-bold uppercase tracking-widest">{kpi.label}</p>
                             </div>
                         </div>
-                        <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+                        <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/5 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000"></div>
                     </div>
                 ))}
             </div>
 
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Bar Chart: Fault Categories */}
-                <Card className="p-8 space-y-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-blue-600" />
-                        توزيع الأعطال حسب القسم
+                <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-[2.5rem] space-y-8">
+                    <h3 className="text-xl font-black text-white flex items-center gap-3">
+                        <TrendingUp className="w-6 h-6 text-blue-500" />
+                        توزيع الأعطال السيادية
                     </h3>
-                    <div className="h-[300px] w-full">
+                    <div className="h-[350px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                                data={categoryDistribution}
-                                layout="vertical"
-                                margin={{ left: 20 }}
-                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                onClick={(data: any) => {
-                                    if (data && data.activePayload && data.activePayload.length > 0) {
-                                        const categoryName = data.activePayload[0].payload.name;
-                                        navigate(`/tickets?search=${encodeURIComponent(categoryName)}`);
-                                    }
-                                }}
-                                className="cursor-pointer"
-                            >
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                            <BarChart data={categoryDistribution} layout="vertical" margin={{ left: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.05)" />
                                 <XAxis type="number" hide />
                                 <YAxis
                                     dataKey="name"
                                     type="category"
                                     axisLine={false}
                                     tickLine={false}
-                                    width={100}
-                                    tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }}
+                                    width={120}
+                                    tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '900' }}
                                 />
                                 <Tooltip
-                                    cursor={{ fill: '#f8fafc' }}
-                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                                    contentStyle={{
+                                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                                        borderRadius: '24px',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        backdropFilter: 'blur(10px)'
+                                    }}
                                 />
-                                <Bar dataKey="value" fill="#3b82f6" radius={[0, 8, 8, 0]} barSize={20} />
+                                <Bar dataKey="value" fill="#3b82f6" radius={[0, 12, 12, 0]} barSize={24} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
-                </Card>
+                </div>
 
-                {/* Pie Chart: Status Distribution */}
-                <Card className="p-8 space-y-6">
-                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-emerald-600" />
-                        حالة البلاغات الحالية
+                <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-[2.5rem] space-y-8">
+                    <h3 className="text-xl font-black text-white flex items-center gap-3">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                        الحالة التشغيلية للنظام
                     </h3>
-                    <div className="h-[300px] w-full">
+                    <div className="h-[350px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
                                     data={statusDistribution}
                                     cx="50%"
-                                    cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={80}
-                                    paddingAngle={5}
+                                    cy="40%"
+                                    innerRadius={80}
+                                    outerRadius={110}
+                                    paddingAngle={8}
                                     dataKey="value"
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    onClick={(data: any) => {
-                                        if (data && data.payload && data.payload.key) {
-                                            navigate(`/tickets?status=${data.payload.key}`);
-                                        }
-                                    }}
-                                    className="cursor-pointer"
+                                    stroke="none"
                                 >
                                     {statusDistribution.map((_, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                                <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                <Tooltip
+                                    contentStyle={{
+                                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                                        borderRadius: '24px',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        backdropFilter: 'blur(10px)'
+                                    }}
+                                />
+                                <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ paddingTop: '20px', color: 'rgba(255,255,255,0.4)', fontWeight: '900', fontSize: '10px' }} />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
-                </Card>
+                </div>
             </div>
 
             {/* Bottom Section: Recent Activity */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card className="lg:col-span-2 overflow-hidden border-0">
-                    <div className="p-6 border-b border-slate-50 flex items-center justify-between">
-                        <h2 className="text-xl font-bold text-slate-900">أحدث النشاطات</h2>
-                        <button
-                            onClick={() => navigate('/tickets')}
-                            className="text-blue-600 text-sm font-bold flex items-center gap-1 hover:underline"
-                        >
-                            عرض كل البلاغات
-                            <ArrowRight className="w-4 h-4" />
-                        </button>
-                    </div>
-                    <div className="divide-y divide-slate-50">
-                        {recentTickets.length === 0 ? (
-                            <div className="p-20 text-center text-slate-400 font-bold uppercase tracking-widest text-xs italic">
-                                لا يوجد نشاط مؤخرًا
-                            </div>
-                        ) : (
-                            recentTickets.map(ticket => (
-                                <div
-                                    key={ticket.id}
-                                    onClick={() => navigate(`/tickets/${ticket.id}`)}
-                                    className="flex items-center gap-4 p-6 hover:bg-slate-50 transition-colors cursor-pointer group"
-                                >
-                                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-110 transition-transform">
-                                        {ticket.branch.brand.logo_url ? (
-                                            <img src={ticket.branch.brand.logo_url} alt="Brand" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <AlertCircle className="w-6 h-6 text-slate-400" />
-                                        )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
-                                            {ticket.fault_category} - {ticket.branch.name_ar}
-                                        </p>
-                                        <p className="text-[10px] text-slate-500 mt-1 font-bold">
-                                            {new Date(ticket.created_at).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long' })} • {ticket.branch.brand.name_ar}
-                                        </p>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-2 shrink-0">
-                                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${priorityColors[ticket.priority]}`}>
-                                            {ticket.priority.toUpperCase()}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-slate-400">
-                                            {statusLabels[ticket.status]}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </Card>
-
-                {/* Quick Help/Tip */}
-                <div className="bg-slate-900 p-8 rounded-3xl text-white shadow-xl relative overflow-hidden flex flex-col justify-center">
-                    <div className="relative z-10 space-y-6">
-                        <div className="bg-blue-500/20 p-3 rounded-2xl w-fit">
-                            <AlertCircle className="w-6 h-6 text-blue-400" />
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] overflow-hidden">
+                <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                    <h2 className="text-2xl font-black text-white tracking-tight">الفعاليات الأخيرة</h2>
+                    <button
+                        onClick={() => navigate('/tickets')}
+                        className="bg-white/5 px-6 py-2.5 rounded-xl text-blue-400 text-xs font-black flex items-center gap-2 hover:bg-white/10 transition-all border border-blue-500/20"
+                    >
+                        الأرشيف الكامل
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                    </button>
+                </div>
+                <div className="divide-y divide-white/5">
+                    {recentTickets.length === 0 ? (
+                        <div className="p-32 text-center text-white/20 font-black uppercase tracking-[0.2em] text-sm animate-pulse">
+                            سكون مطلق... لا توجد بيانات مسجلة
                         </div>
-                        <h3 className="text-2xl font-bold leading-tight">جاهز لجدولة موعد الصيانة؟</h3>
-                        <p className="text-slate-400 text-sm leading-relaxed">
-                            تأكد من مراجعة البلاغات الطارئة أولاً. تحديثك المستمر لحالة البلاغ يساعد المديرين على تتبع نسبة الإنجاز بدقة.
-                        </p>
-                        <button
-                            onClick={() => navigate('/tickets')}
-                            className="w-full bg-white text-slate-900 font-black py-4 rounded-2xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
-                        >
-                            متابعة العمل
-                            <ArrowRight className="w-5 h-5" />
-                        </button>
-                    </div>
-                    <div className="absolute top-[-20%] right-[-20%] w-48 h-48 bg-blue-600/20 rounded-full blur-3xl"></div>
+                    ) : (
+                        recentTickets.map(ticket => (
+                            <div
+                                key={ticket.id}
+                                onClick={() => navigate(`/tickets/${ticket.id}`)}
+                                className="flex items-center gap-6 p-8 hover:bg-white/[0.03] transition-all cursor-pointer group"
+                            >
+                                <div className="w-16 h-16 rounded-[1.5rem] bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden shrink-0 group-hover:rotate-6 transition-transform">
+                                    {ticket.branch.brand.logo_url ? (
+                                        <img src={ticket.branch.brand.logo_url} alt="Brand" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                                    ) : (
+                                        <Building2 className="w-8 h-8 text-white/20" />
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-lg font-black text-white truncate group-hover:text-blue-400 transition-colors">
+                                        {ticket.fault_category}
+                                    </p>
+                                    <p className="text-sm text-white/40 mt-1 font-medium flex items-center gap-2">
+                                        <AlertCircle className="w-4 h-4" />
+                                        {ticket.branch.name_ar} • {ticket.branch.brand.name_ar}
+                                    </p>
+                                </div>
+                                <div className="flex flex-col items-end gap-3 shrink-0">
+                                    <span className={`text-[10px] font-black px-4 py-1.5 rounded-full border shadow-lg ${priorityColors[ticket.priority]}`}>
+                                        {ticket.priority.toUpperCase()}
+                                    </span>
+                                    <span className="text-xs font-black text-white/20 uppercase tracking-widest leading-none">
+                                        {statusLabels[ticket.status]}
+                                    </span>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>
