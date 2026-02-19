@@ -1,169 +1,224 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { SovereignWizard } from '../../components/tickets/SovereignWizard';
-import { useGeofence } from '../../hooks/useGeofence';
 import {
+    Loader2,
+    Calendar,
     MapPin,
     AlertTriangle,
-    Loader2,
-    Navigation,
-    ArrowLeft,
-    Clock
+    ArrowRight,
+    MessageCircle,
+    CheckCircle2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useGeoLocation } from '../../hooks/useGeoLocation';
+import { NotificationEngine } from '../../utils/NotificationEngine';
 
 export default function JobExecutionWizard() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const [ticket, setTicket] = useState<any>(null); // Keep any for DB row for now as it's complex, but handle nulls
     const [loading, setLoading] = useState(true);
-    const [ticket, setTicket] = useState<any>(null);
-    const [branchLocation, setBranchLocation] = useState<{ lat: number, lng: number } | null>(null);
+    const [submitted, setSubmitted] = useState(false);
+    const geofence = useGeoLocation();
 
-    // Geofencing Hook
-    const geofence = useGeofence(branchLocation);
+    const isAllowed = !geofence.coords || !ticket?.branch?.location_lat
+        ? true
+        : geofence.isWithinRadius(
+            geofence.coords.latitude,
+            geofence.coords.longitude,
+            Number(ticket.branch.location_lat),
+            Number(ticket.branch.location_lng)
+        );
 
     useEffect(() => {
-        async function fetchTicketData() {
+        const fetchTicket = async () => {
             if (!id) return;
+            console.log('[Sovereign Debug]: Fetching ticket for execution', id);
             try {
                 const { data, error } = await supabase
                     .from('tickets')
-                    .select('*, branch:branches(latitude, longitude, name_ar)')
+                    .select('*, branch:branches(*)')
                     .eq('id', id)
                     .single();
 
                 if (error) throw error;
-                setTicket(data);
+                if (!data) throw new Error('التذكرة غير موجودة');
 
-                if (data.branch) {
-                    setBranchLocation({
-                        lat: data.branch.latitude,
-                        lng: data.branch.longitude
-                    });
-                }
-            } catch (err) {
-                console.error('Error fetching ticket:', err);
-                toast.error('خطأ في تحميل بيانات المهمة');
+                console.log('[Sovereign Debug]: Ticket loaded', data);
+                setTicket(data);
+            } catch (error: any) {
+                console.error('[Sovereign Debug]: Fetch error', error);
+                toast.error(`خطأ: ${error.message || 'فشل تحميل بيانات التذكرة'}`);
+                navigate('/dashboard');
             } finally {
                 setLoading(false);
             }
-        }
-        fetchTicketData();
-    }, [id]);
+        };
+
+        fetchTicket();
+    }, [id, navigate]);
 
     const handleComplete = async (formData: any) => {
-        if (!geofence.isAllowed) {
-            toast.error('يجب أن تكون في موقع العطل للمتابعة');
+        console.log('[Sovereign Debug]: Handling Wizard Completion', formData);
+
+        // Geofencing Check
+        if (!isAllowed) {
+            toast.error('يجب أن تكون في موقع العطل للمتابعة السيادية');
             return;
         }
 
         try {
             toast.loading('جاري تنفيذ المعالجة السيادية...', { id: 'executing' });
 
-            // 1. Atomic Inventory Transaction (if spare part used)
+            // 1. Update ticket status and metadata
+            const updatePayload = {
+                status: 'closed', // Match the enum: open, in_progress, closed
+                description: formData.technical_notes || formData.issue_description || ticket?.description,
+                images_url: formData.media_upload || [],
+                closed_at: new Date().toISOString(),
+                resolved_at: new Date().toISOString(),
+                // Map dynamic data if exists
+                asset_id: formData.asset_id || ticket?.asset_id,
+                priority: formData.severity_level || ticket?.priority
+            };
+
+            console.log('[Sovereign Debug]: Submitting ticket update', updatePayload);
+
+            const { error: updateError } = await (supabase.from('tickets') as any)
+                .update(updatePayload)
+                .eq('id', id!);
+
+            if (updateError) {
+                console.error('[Sovereign Debug] Update Failed:', updateError);
+                if (updateError.message) console.error('Message:', updateError.message);
+                if (updateError.details) console.error('Details:', updateError.details);
+                if (updateError.hint) console.error('Hint:', updateError.hint);
+                throw updateError;
+            }
+
+            // 2. Inventory Transaction (Example: if part used)
             if (formData.spare_part_id && formData.quantity) {
-                const { error: rpcError } = await supabase.rpc('consume_spare_part', {
+                console.log('[Sovereign Debug]: Consuming spare part', formData.spare_part_id);
+                const { error: rpcError } = await (supabase as any).rpc('consume_spare_part', {
                     p_part_id: formData.spare_part_id,
                     p_quantity: parseInt(formData.quantity, 10),
                     p_ticket_id: id
                 });
-
-                if (rpcError) throw rpcError;
+                if (rpcError) console.error('[Sovereign Debug]: Inventory RPC Error', rpcError);
             }
 
-            // 2. Update ticket status and metadata
-            const { error: updateError } = await supabase
-                .from('tickets')
-                .update({
-                    status: 'resolved',
-                    completion_notes: formData.technical_notes,
-                    images_url: formData.evidence_image ? [formData.evidence_image] : [],
-                    completed_at: new Date().toISOString()
-                })
-                .eq('id', id!);
-
-            if (updateError) throw updateError;
-
             toast.success('تم إتمام المهمة بنجاح سيادي! ✨', { id: 'executing' });
-            navigate('/dashboard');
+            setSubmitted(true);
+            // navigate('/dashboard');
+
         } catch (err: any) {
-            console.error('Execution Error:', err);
-            toast.error(err.message || 'فشل تنفيذ العملية', { id: 'executing' });
+            console.error('[Sovereign Debug] Execution Error:', err);
+            const errMsg = (err as any)?.message || 'خطأ غير معروف';
+            toast.error(`فشل تنفيذ العملية: ${errMsg}`, { id: 'executing' });
         }
     };
 
+    if (submitted) return (
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-right" dir="rtl">
+            <div className="max-w-md w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-[3rem] p-10 text-center space-y-8 animate-in zoom-in duration-500">
+                <div className="bg-emerald-500/20 w-24 h-24 rounded-full flex items-center justify-center mx-auto border-4 border-emerald-500/40">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                </div>
+                <div className="space-y-2">
+                    <h2 className="text-3xl font-black text-white tracking-tight">تم الإنجاز بنجاح!</h2>
+                    <p className="text-white/40 text-sm font-medium italic">تم تحديث حالة البلاغ وإغلاقه في السجل السيادي</p>
+                </div>
+
+                <div className="space-y-4 pt-4">
+                    <p className="text-[10px] text-white/20 font-black uppercase tracking-[0.2em]">إجراءات فورية</p>
+                    <button
+                        onClick={() => {
+                            if (ticket?.branch?.phone) {
+                                NotificationEngine.openWhatsApp(ticket.branch.phone, 'ticket_assigned', {
+                                    name: ticket.branch.name_ar,
+                                    ticket_id: ticket.id.slice(0, 8),
+                                    branch: ticket.branch.name_ar,
+                                    issue: ticket.fault_category
+                                });
+                            } else {
+                                toast.error('رقم هاتف الفرع غير متوفر');
+                            }
+                        }}
+                        className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-4 rounded-2xl font-black shadow-lg shadow-green-900/40 flex items-center justify-center gap-3 transition-all active:scale-95"
+                    >
+                        <MessageCircle className="w-6 h-6" />
+                        تنبيه الفرع بالإصلاح
+                    </button>
+
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        className="w-full bg-white/5 hover:bg-white/10 text-white py-4 rounded-2xl font-bold border border-white/10 transition-all"
+                    >
+                        العودة للمهام
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
     if (loading) return (
-        <div className="min-h-screen bg-black flex items-center justify-center">
-            <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
+        <div className="flex flex-col items-center justify-center p-20 space-y-4">
+            <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+            <p className="text-slate-500 font-bold">جاري تحميل المهمة السيادية...</p>
         </div>
     );
 
     return (
-        <div className="min-h-screen bg-black bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-black to-black p-4 md:p-8 font-sans rtl" dir="rtl">
-            {/* Header */}
-            <div className="max-w-xl mx-auto mb-8 flex items-center justify-between">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="p-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl text-white hover:bg-white/10 transition-all"
-                >
-                    <ArrowLeft className="w-6 h-6" />
-                </button>
-                <div className="text-right">
-                    <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">تذكرة صيانة سيادية</p>
-                    <h2 className="text-white font-mono text-lg font-bold">#{id?.slice(0, 8)}</h2>
+        <div className="min-h-screen bg-slate-900 pb-20 pt-6 px-4">
+            {/* Context Header */}
+            <div className="max-w-xl mx-auto mb-8 bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white"
+                    >
+                        <ArrowRight className="w-5 h-5" />
+                    </button>
+                    <div>
+                        <h1 className="text-xl font-bold text-white">{ticket?.fault_category}</h1>
+                        <p className="text-white/40 text-sm flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {ticket?.branch?.name_ar}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex flex-col items-end">
+                    <span className="bg-blue-600 px-3 py-1 rounded-full text-[10px] font-black text-white">
+                        {ticket?.id.substring(0, 8)}
+                    </span>
+                    <span className="text-white/40 text-[10px] mt-1 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {new Date(ticket?.created_at).toLocaleDateString('ar-EG')}
+                    </span>
                 </div>
             </div>
 
-            {/* Geofence Guard Card */}
-            <div className={`
-                max-w-xl mx-auto mb-8 p-6 rounded-[2.5rem] backdrop-blur-2xl border transition-all duration-700 shadow-2xl
-                ${geofence.isAllowed ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'}
-            `}>
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className={`p-4 rounded-2xl ${geofence.isAllowed ? 'bg-emerald-500' : 'bg-red-500'} shadow-[0_0_20px_rgba(0,0,0,0.3)]`}>
-                            {geofence.isAllowed ? <Navigation className="w-6 h-6 text-white" /> : <AlertTriangle className="w-6 h-6 text-white" />}
-                        </div>
-                        <div>
-                            <h2 className="text-white font-black text-lg">نظام الحرس الجغرافي</h2>
-                            <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">
-                                {geofence.isAllowed ? 'أنت ضمن النطاق المسموح' : 'أنت خارج نطاق المعالجة'}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="text-left">
-                        <p className="text-white font-mono text-2xl font-black">
-                            {geofence.currentDistance ?? '--'}m
-                        </p>
-                        <div className="flex items-center gap-1 justify-end">
-                            <Clock className="w-3 h-3 text-white/20" />
-                            <p className="text-white/20 text-[10px] font-bold">تحديث نشط</p>
-                        </div>
-                    </div>
+            {/* Geofencing Status */}
+            {!isAllowed && (
+                <div className="max-w-xl mx-auto mb-6 bg-amber-500/20 border border-amber-500/40 p-4 rounded-2xl flex items-center gap-3 text-amber-200">
+                    <AlertTriangle className="w-6 h-6 shrink-0" />
+                    <p className="text-xs font-bold leading-relaxed">
+                        تنبيه: أنت خارج النطاق الجغرافي للفرع. يرجى التواجد في الموقع لتفعيل صلاحية الإرسال السيادية.
+                    </p>
                 </div>
+            )}
 
-                {!geofence.isAllowed && (
-                    <div className="mt-6 p-4 bg-white/5 rounded-2xl border border-white/10 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
-                        <MapPin className="w-5 h-5 text-red-400" />
-                        <p className="text-white/60 text-sm font-medium">
-                            يرجى التحرك مسافة <span className="text-white font-black">{Math.max(0, (geofence.currentDistance || 0) - geofence.maxRadius)}م</span> لفتح ميزات الإغلاق
-                        </p>
-                    </div>
-                )}
-            </div>
-
-            {/* Implementation Guard */}
-            <div className={`transition-all duration-700 ${geofence.isAllowed ? 'opacity-100 pointer-events-auto scale-100' : 'opacity-20 pointer-events-none grayscale scale-95'}`}>
+            {/* Sovereign Wizard Implementation */}
+            <main>
                 <SovereignWizard
                     formKey="ticket_maintenance_v1"
                     onComplete={handleComplete}
-                    initialData={{
-                        asset_id: ticket?.asset_id,
-                        technical_notes: ''
-                    }}
+                    initialData={{ technical_notes: ticket?.completion_notes }}
+                    context={{ branchId: ticket?.branch_id }}
                 />
-            </div>
+            </main>
         </div>
     );
 }

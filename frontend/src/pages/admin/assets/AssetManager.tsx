@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import QRScanner from '../../../components/shared/QRScanner';
 import { supabase } from '../../../lib/supabase';
 import {
     Edit,
@@ -35,6 +36,7 @@ export default function AssetManager() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [assetToEdit, setAssetToEdit] = useState<Asset | null>(null);
     const [deleteAsset, setDeleteAsset] = useState<{ id: string, name: string } | null>(null);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     useEffect(() => {
         fetchAssets();
@@ -54,9 +56,10 @@ export default function AssetManager() {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setAssets(data as any || []);
-        } catch (error: any) {
-            toast.error('فشل تحميل الأصول: ' + error.message);
+            setAssets(data as Asset[] || []);
+        } catch (error: unknown) {
+            const err = error as Error;
+            toast.error('فشل تحميل الأصول: ' + err.message);
         } finally {
             setLoading(false);
         }
@@ -106,8 +109,9 @@ export default function AssetManager() {
             toast.success('تم حذف المعدة بنجاح');
             setDeleteAsset(null);
             fetchAssets();
-        } catch (error: any) {
-            toast.error('فشل الحذف: ' + error.message);
+        } catch (error: unknown) {
+            const err = error as Error;
+            toast.error('فشل الحذف: ' + err.message);
         }
     };
 
@@ -121,6 +125,19 @@ export default function AssetManager() {
         a.serial_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.branches?.name_ar.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const handleScan = (decodedText: string) => {
+        // Find asset by ID or Serial from QR
+        const assetId = decodedText.split('asset_id=')[1];
+        const found = assets.find(a => a.id === assetId || a.serial_number === decodedText);
+        if (found) {
+            setSelectedAssetForHistory(found);
+            setIsScannerOpen(false);
+            toast.success(`تم العثور على: ${found.name}`);
+        } else {
+            toast.error('لم يتم العثور على المعدة');
+        }
+    };
 
 
 
@@ -140,20 +157,27 @@ export default function AssetManager() {
     };
 
     return (
-        <div className="p-4 md:p-8 bg-slate-50 min-h-screen" dir="rtl">
+        <div className="p-4 md:p-8 bg-transparent min-h-screen" dir="rtl">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                        <Package className="w-8 h-8 text-blue-600" />
+                    <h1 className="text-3xl font-black text-white flex items-center gap-2">
+                        <Package className="w-8 h-8 text-blue-500" />
                         إدارة المعدات والأصول
                     </h1>
-                    <p className="text-slate-500 font-bold">تتبع حالة الماكينات وسجل صيانتها عبر الفروع</p>
+                    <p className="text-white/40 font-bold">تتبع حالة الماكينات وسجل صيانتها عبر الفروع</p>
                 </div>
                 <div className="flex gap-2">
                     <button
+                        onClick={() => setIsScannerOpen(true)}
+                        className="bg-white/5 border border-white/10 hover:bg-white/10 text-white px-4 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                        <QrCode className="w-5 h-5 text-blue-400" />
+                        <span className="hidden md:inline">مسح كود</span>
+                    </button>
+                    <button
                         onClick={handleExport}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95"
+                        className="bg-emerald-600/20 border border-emerald-500/20 hover:bg-emerald-600/30 text-emerald-400 px-4 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
                     >
                         <Download className="w-5 h-5" />
                         <span className="hidden md:inline">تصدير</span>
@@ -163,7 +187,7 @@ export default function AssetManager() {
                             setAssetToEdit(null);
                             setIsFormOpen(true);
                         }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl shadow-blue-500/20 transition-all active:scale-95"
                     >
                         <Plus className="w-5 h-5" />
                         إضافة معدة جديدة
@@ -172,15 +196,15 @@ export default function AssetManager() {
             </div>
 
             {/* Search */}
-            <div className="relative mb-6">
+            <div className="relative mb-8 group">
                 <input
                     type="text"
                     placeholder="بحث باسم المعدة، السيريال، أو الفرع..."
-                    className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 pr-12 text-slate-800 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-bold"
+                    className="w-full bg-white/5 border border-white/10 rounded-[2rem] px-8 py-5 pr-14 text-white placeholder:text-white/20 shadow-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-black text-lg"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                <Search className="absolute right-4 top-4.5 w-6 h-6 text-slate-400" />
+                <Search className="absolute right-6 top-5.5 w-7 h-7 text-white/20 group-focus-within:text-blue-500 transition-colors" />
             </div>
 
             {/* Content */}
@@ -190,18 +214,18 @@ export default function AssetManager() {
                     <p className="text-slate-500 font-bold">جاري تحميل قائمة المعدات...</p>
                 </div>
             ) : filteredAssets.length === 0 ? (
-                <div className="bg-white rounded-3xl p-20 text-center border border-slate-100 shadow-sm">
-                    <Package className="w-20 h-20 text-slate-100 mx-auto mb-4" />
-                    <h3 className="text-xl font-bold text-slate-400">لا توجد معدات مطابقة للبحث</h3>
+                <div className="bg-white/5 backdrop-blur-xl rounded-[2.5rem] p-20 text-center border border-white/10">
+                    <Package className="w-20 h-20 text-white/5 mx-auto mb-4" />
+                    <h3 className="text-xl font-bold text-white/20">لا توجد معدات مطابقة للبحث</h3>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {filteredAssets.map(asset => (
-                        <div key={asset.id} className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm hover:shadow-md transition-all group overflow-hidden relative">
+                        <div key={asset.id} className="bg-white/5 backdrop-blur-xl rounded-[2.5rem] border border-white/10 p-8 shadow-2xl hover:bg-white/10 transition-all group overflow-hidden relative">
                             {/* Status Badge */}
-                            <div className={`absolute top-0 left-0 px-4 py-1 rounded-br-2xl text-[10px] font-black ${asset.status === 'Active' ? 'bg-emerald-100 text-emerald-700' :
-                                asset.status === 'Under Repair' ? 'bg-orange-100 text-orange-700' :
-                                    'bg-red-100 text-red-700'
+                            <div className={`absolute top-0 left-0 px-6 py-2 rounded-br-2xl text-[10px] font-black tracking-widest uppercase ${asset.status === 'Active' ? 'bg-emerald-500/20 text-emerald-400 border-r border-b border-emerald-500/30' :
+                                asset.status === 'Under Repair' ? 'bg-orange-500/20 text-orange-400 border-r border-b border-orange-500/30' :
+                                    'bg-red-500/20 text-red-400 border-r border-b border-red-500/30'
                                 }`}>
                                 {asset.status === 'Active' ? 'نشط' : asset.status === 'Under Repair' ? 'تحت الصيانة' : 'خارج الخدمة'}
                             </div>
@@ -209,72 +233,72 @@ export default function AssetManager() {
                             {/* Health Badge */}
                             {(() => {
                                 const ticketCount = asset.tickets?.[0]?.count || 0;
-                                // Health Score = 100 - (Ticket Count * 5) - (Repair Cost Impact - placeholder)
-                                // We use a simpler heuristic for now: 100 - (Tickets * 5)
                                 const healthScore = Math.max(0, 100 - (ticketCount * 5));
 
-                                let colorClass = 'bg-emerald-100 text-emerald-700';
-                                if (healthScore < 50) colorClass = 'bg-red-100 text-red-700';
-                                else if (healthScore < 80) colorClass = 'bg-amber-100 text-amber-700';
+                                let colorClass = 'bg-emerald-500/20 text-emerald-400 border-l border-b border-emerald-500/30';
+                                if (healthScore < 50) colorClass = 'bg-red-500/20 text-red-400 border-l border-b border-red-500/30';
+                                else if (healthScore < 80) colorClass = 'bg-amber-500/20 text-amber-400 border-l border-b border-amber-500/30';
 
                                 return (
-                                    <div className={`absolute top-0 right-0 px-3 py-1 rounded-bl-2xl text-[10px] font-black flex items-center gap-1 ${colorClass}`}>
-                                        <span>{healthScore}%</span>
-                                        <span className="opacity-75">صحة</span>
+                                    <div className={`absolute top-0 right-0 px-4 py-2 rounded-bl-2xl text-[10px] font-black flex items-center gap-1 ${colorClass}`}>
+                                        <span className="animate-pulse">{healthScore}%</span>
+                                        <span className="opacity-75 tracking-widest uppercase">صحة</span>
                                     </div>
                                 );
                             })()}
 
-                            <div className="flex items-start justify-between mb-4 mt-2">
+                            <div className="flex items-start justify-between mb-6 mt-4">
                                 <div>
-                                    <h3 className="font-black text-slate-800 text-lg mb-1">{asset.name}</h3>
-                                    <div className="flex items-center gap-1 text-slate-400 text-xs font-bold">
-                                        <MapPin className="w-3 h-3" />
+                                    <h3 className="font-black text-white text-xl mb-1 tracking-tight">{asset.name}</h3>
+                                    <div className="flex items-center gap-2 text-white/40 text-sm font-bold">
+                                        <div className="p-1 bg-white/5 rounded-md">
+                                            <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                                        </div>
                                         {asset.branches?.name_ar}
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => handleEdit(asset)}
-                                        className="p-2 bg-slate-50 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-xl transition-colors"
+                                        className="p-3 bg-white/5 hover:bg-blue-500/20 text-white/40 hover:text-blue-400 rounded-2xl transition-all border border-white/5 hover:border-blue-500/30"
                                     >
                                         <Edit className="w-4 h-4" />
                                     </button>
                                     <button
                                         onClick={() => setDeleteAsset({ id: asset.id, name: asset.name })}
-                                        className="p-2 bg-slate-50 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-xl transition-colors"
+                                        className="p-3 bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 rounded-2xl transition-all border border-white/5 hover:border-red-500/30"
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="space-y-3 mb-6">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-400 font-bold">السيريال:</span>
-                                    <span className="text-slate-700 font-mono font-bold bg-slate-50 px-2 rounded">{asset.serial_number || '---'}</span>
+                            <div className="space-y-4 mb-8">
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-white/40 font-bold">السيريال:</span>
+                                    <span className="text-white font-mono font-black bg-white/5 border border-white/10 px-3 py-1 rounded-xl">{asset.serial_number || '---'}</span>
                                 </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-400 font-bold">العلامة التجارية:</span>
-                                    <span className="text-slate-700 font-bold">{asset.brands?.name_ar || '---'}</span>
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-white/40 font-bold">العلامة التجارية:</span>
+                                    <span className="text-white font-black">{asset.brands?.name_ar || '---'}</span>
                                 </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-400 font-bold">الموديل:</span>
-                                    <span className="text-slate-700 font-bold">{asset.model_number || '---'}</span>
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-white/40 font-bold">الموديل:</span>
+                                    <span className="text-white font-black">{asset.model_number || '---'}</span>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-50">
+                            <div className="grid grid-cols-2 gap-4 pt-6 border-t border-white/5">
                                 <button
                                     onClick={() => setSelectedAssetForQR(asset)}
-                                    className="flex items-center justify-center gap-2 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-black transition-all"
+                                    className="flex items-center justify-center gap-2 py-3.5 bg-white/5 hover:bg-white/10 text-white rounded-[1.5rem] text-xs font-black transition-all border border-white/10"
                                 >
-                                    <QrCode className="w-4 h-4" />
+                                    <QrCode className="w-4 h-4 text-blue-400" />
                                     كود QR
                                 </button>
                                 <button
                                     onClick={() => setSelectedAssetForHistory(asset)}
-                                    className="flex items-center justify-center gap-2 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-xs font-black transition-all"
+                                    className="flex items-center justify-center gap-2 py-3.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-[1.5rem] text-xs font-black transition-all border border-blue-500/20"
                                 >
                                     <History className="w-4 h-4" />
                                     تاريخ الصيانة
@@ -285,34 +309,42 @@ export default function AssetManager() {
                 </div>
             )}
 
+            {/* QR Scanner */}
+            {isScannerOpen && (
+                <QRScanner
+                    onScan={handleScan}
+                    onClose={() => setIsScannerOpen(false)}
+                />
+            )}
+
             {/* QR Modal */}
             {selectedAssetForQR && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setSelectedAssetForQR(null)} />
-                    <div className="relative bg-white rounded-[40px] p-10 max-w-sm w-full text-center shadow-2xl animate-in fade-in zoom-in duration-300">
-                        <div className="mb-6 p-6 bg-slate-50 rounded-[32px] inline-block">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setSelectedAssetForQR(null)} />
+                    <div className="relative bg-slate-900 border border-white/20 rounded-[3rem] p-12 max-w-sm w-full text-center shadow-2xl animate-in fade-in zoom-in duration-300">
+                        <div className="mb-8 p-8 bg-white rounded-[2.5rem] inline-block shadow-inner ring-8 ring-white/5">
                             <QRCodeSVG
                                 id="qr-code-svg"
                                 value={`${window.location.origin}/new-ticket?asset_id=${selectedAssetForQR.id}`}
                                 size={200}
                                 level="H"
-                                includeMargin={true}
+                                includeMargin={false}
                             />
                         </div>
-                        <h3 className="text-xl font-black text-slate-900 mb-2">{selectedAssetForQR.name}</h3>
-                        <p className="text-slate-500 font-bold text-sm mb-8">امسح الكود لفتح صفحة المعدة مباشرة</p>
+                        <h3 className="text-2xl font-black text-white mb-2">{selectedAssetForQR.name}</h3>
+                        <p className="text-white/40 font-bold text-sm mb-10">امسح الكود لفتح صفحة المعدة مباشرة</p>
 
                         <div className="flex gap-4">
                             <button
                                 onClick={() => handleDownloadQR(selectedAssetForQR.id, selectedAssetForQR.name)}
-                                className="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2 transition-all active:scale-95"
                             >
                                 <Download className="w-5 h-5" />
-                                تحميل الكود
+                                تحميل
                             </button>
                             <button
                                 onClick={() => setSelectedAssetForQR(null)}
-                                className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-black"
+                                className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 text-white py-4 rounded-2xl font-black transition-all"
                             >
                                 إغلاق
                             </button>

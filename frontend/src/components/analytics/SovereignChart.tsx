@@ -10,15 +10,18 @@ import {
     PieChart,
     Pie,
     Cell,
-    Legend
+    Legend,
+    LineChart,
+    Line
 } from 'recharts';
-import { DollarSign, CheckCircle, TrendingUp, AlertTriangle } from 'lucide-react';
+import { DollarSign, CheckCircle, TrendingUp, AlertTriangle, ArrowUpRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export interface WidgetConfig {
     id: string;
-    type: 'kpi_card' | 'bar_chart' | 'pie_chart';
+    type: 'kpi_card' | 'bar_chart' | 'pie_chart' | 'line_chart';
     title: string;
     view?: string;
     column?: string;
@@ -30,6 +33,7 @@ export interface WidgetConfig {
     countKey?: string;
     color?: string;
     icon?: string;
+    link?: string;
 }
 
 interface SovereignChartProps {
@@ -38,6 +42,8 @@ interface SovereignChartProps {
 }
 
 export const SovereignChart: React.FC<SovereignChartProps> = ({ config, data }) => {
+    const navigate = useNavigate();
+
     const formattedValue = useMemo(() => {
         if (config.type !== 'kpi_card') return null;
 
@@ -61,13 +67,25 @@ export const SovereignChart: React.FC<SovereignChartProps> = ({ config, data }) 
         }
     }, [config.icon]);
 
+    const handleClick = () => {
+        if (config.link) {
+            navigate(config.link);
+        }
+    };
+
+    const containerClass = `relative overflow-hidden transition-all duration-300 ${config.link ? 'cursor-pointer hover:ring-2 hover:ring-blue-500/50' : ''}`;
+
     if (config.type === 'kpi_card') {
         return (
-            <div className="bg-white/10 backdrop-blur-2xl border border-white/20 p-6 rounded-[2rem] shadow-2xl transition-all hover:scale-105 duration-300 group">
+            <div
+                onClick={handleClick}
+                className={`bg-white/10 backdrop-blur-2xl border border-white/20 p-6 rounded-[2rem] shadow-2xl transition-all hover:scale-105 group ${containerClass}`}
+            >
                 <div className="flex justify-between items-start mb-4">
                     <div className="p-4 rounded-2xl bg-white/5 border border-white/10 group-hover:bg-blue-500/20 group-hover:border-blue-500/30 transition-all">
                         <IconComponent className="w-6 h-6 text-white/70 group-hover:text-blue-400" />
                     </div>
+                    {config.link && <ArrowUpRight className="w-5 h-5 text-white/20 group-hover:text-white transition-all" />}
                 </div>
                 <h3 className="text-white/40 text-xs font-black uppercase tracking-widest mb-1">{config.title}</h3>
                 <div className="text-3xl font-black text-white">{formattedValue}</div>
@@ -77,11 +95,17 @@ export const SovereignChart: React.FC<SovereignChartProps> = ({ config, data }) 
 
     if (config.type === 'bar_chart') {
         return (
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] h-[400px]">
-                <h3 className="text-white font-black text-lg mb-6 flex items-center gap-3">
-                    <span className="w-2 h-6 bg-blue-500 rounded-full" />
-                    {config.title}
-                </h3>
+            <div
+                onClick={handleClick}
+                className={`bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] h-[400px] ${containerClass}`}
+            >
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-white font-black text-lg flex items-center gap-3">
+                        <span className="w-2 h-6 bg-blue-500 rounded-full" />
+                        {config.title}
+                    </h3>
+                    {config.link && <ArrowUpRight className="w-5 h-5 text-white/20" />}
+                </div>
                 <div className="h-[300px] w-full" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={data}>
@@ -131,11 +155,17 @@ export const SovereignChart: React.FC<SovereignChartProps> = ({ config, data }) 
             : data.map(d => ({ name: d[config.xKey || 'name'], value: Number(d[config.yKey || 'value']) }));
 
         return (
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] h-[400px]">
-                <h3 className="text-white font-black text-lg mb-6 flex items-center gap-3">
-                    <span className="w-2 h-6 bg-purple-500 rounded-full" />
-                    {config.title}
-                </h3>
+            <div
+                onClick={handleClick}
+                className={`bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] h-[400px] ${containerClass}`}
+            >
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-white font-black text-lg flex items-center gap-3">
+                        <span className="w-2 h-6 bg-purple-500 rounded-full" />
+                        {config.title}
+                    </h3>
+                    {config.link && <ArrowUpRight className="w-5 h-5 text-white/20" />}
+                </div>
                 <div className="h-[300px] w-full" dir="ltr">
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -161,6 +191,59 @@ export const SovereignChart: React.FC<SovereignChartProps> = ({ config, data }) 
                             />
                             <Legend verticalAlign="bottom" height={36} />
                         </PieChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        );
+    }
+
+    if (config.type === 'line_chart') {
+        return (
+            <div
+                onClick={handleClick}
+                className={`bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-[2.5rem] h-[400px] ${containerClass}`}
+            >
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-white font-black text-lg flex items-center gap-3">
+                        <span className="w-2 h-6 bg-emerald-500 rounded-full" />
+                        {config.title}
+                    </h3>
+                    {config.link && <ArrowUpRight className="w-5 h-5 text-white/20" />}
+                </div>
+                <div className="h-[300px] w-full" dir="ltr">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={data}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                            <XAxis
+                                dataKey={config.xKey}
+                                fontSize={10}
+                                tickLine={false}
+                                axisLine={false}
+                                tick={{ fill: '#ffffff40', fontWeight: 'bold' }}
+                            />
+                            <YAxis
+                                fontSize={10}
+                                tickLine={false}
+                                axisLine={false}
+                                tick={{ fill: '#ffffff40', fontWeight: 'bold' }}
+                            />
+                            <Tooltip
+                                contentStyle={{
+                                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                                    borderRadius: '16px',
+                                    border: '1px solid rgba(255,255,255,0.1)'
+                                }}
+                                itemStyle={{ color: '#fff', fontWeight: 'bold' }}
+                            />
+                            <Line
+                                type="monotone"
+                                dataKey={config.yKey}
+                                stroke={config.color || '#10b981'}
+                                strokeWidth={4}
+                                dot={{ fill: config.color || '#10b981', r: 6, strokeWidth: 2, stroke: '#000' }}
+                                activeDot={{ r: 8, strokeWidth: 0 }}
+                            />
+                        </LineChart>
                     </ResponsiveContainer>
                 </div>
             </div>

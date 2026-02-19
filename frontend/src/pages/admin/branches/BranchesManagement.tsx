@@ -6,7 +6,7 @@ import { useSovereignMutation } from '../../../hooks/useSovereignMutation';
 import { useSovereignQuery } from '../../../hooks/useSovereignQuery';
 import toast from 'react-hot-toast';
 
-const BranchList: React.FC = () => {
+const BranchesManagement: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [modalAction, setModalAction] = useState<'add' | 'edit'>('add');
@@ -18,7 +18,7 @@ const BranchList: React.FC = () => {
         showArchived,
         orderBy: { column: 'name_ar', ascending: true },
         search: searchTerm,
-        searchColumns: ['name_ar', 'location_info']
+        searchColumns: ['name_ar', 'location'] // Search in name and location
     });
 
     const { createRecord, updateRecord, softDeleteRecord, restoreRecord } = useSovereignMutation({ table_name: 'branches' });
@@ -45,10 +45,10 @@ const BranchList: React.FC = () => {
 
     const handleBatchAction = async (action: string, ids: string[]) => {
         if (action === 'archive') {
-            if (window.confirm(`هل أنت متأكد من أرشفة ${ids.length} فرع؟`)) {
+            if (window.confirm(`هل أنت متأكد من أرشفة ${ids.length} سجل؟`)) {
                 const promises = ids.map(id => softDeleteRecord(id));
                 await Promise.all(promises);
-                toast.success('تمت أرشفة الفروع المختارة');
+                toast.success('تمت الأرشفة الجماعية بنجاح');
                 refetch();
             }
         }
@@ -73,30 +73,26 @@ const BranchList: React.FC = () => {
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-slate-900 border border-white/10 p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 to-transparent pointer-events-none"></div>
-
-                <div className="flex flex-col md:flex-row items-center gap-8 relative z-10 w-full">
-                    <div className="flex items-center gap-8 flex-1">
-                        <div className="bg-blue-600/20 p-5 rounded-[2rem] border border-blue-500/30 shadow-[0_0_50px_rgba(37,99,235,0.2)]">
-                            <Building2 className="w-12 h-12 text-blue-400" />
-                        </div>
-                        <div>
-                            <h1 className="text-5xl font-black text-white tracking-tighter">إدارة الفروع</h1>
-                            <p className="text-white/40 text-xl font-medium mt-2">المحرك السيادي لإدارة أصول المؤسسة</p>
-                        </div>
+                <div className="flex items-center gap-8 relative z-10 w-full">
+                    <div className="bg-blue-600/20 p-5 rounded-[2rem] border border-blue-500/30 shadow-[0_0_50px_rgba(37,99,235,0.2)]">
+                        <Building2 className="w-12 h-12 text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                        <h1 className="text-5xl font-black text-white tracking-tighter">إدارة الفروع السيادية</h1>
+                        <p className="text-white/40 text-xl font-medium mt-2">المحرك الموحد لإدارة أصول المؤسسة</p>
                     </div>
 
-                    <div className="flex gap-4">
-                        <button
-                            onClick={() => setShowArchived(!showArchived)}
-                            className={`flex items-center gap-3 px-6 py-4 rounded-2xl font-black transition-all border ${showArchived
-                                ? 'bg-amber-500 text-white border-amber-600'
-                                : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
-                                }`}
-                        >
-                            {showArchived ? <ArchiveRestore className="w-5 h-5" /> : <Archive className="w-5 h-5" />}
-                            {showArchived ? 'الفروع النشطة' : 'الأرشيف'}
-                        </button>
-                    </div>
+                    {/* Archive Toggle */}
+                    <button
+                        onClick={() => setShowArchived(!showArchived)}
+                        className={`flex items-center gap-3 px-6 py-4 rounded-2xl font-black transition-all border ${showArchived
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-lg shadow-amber-500/20'
+                            : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
+                            }`}
+                    >
+                        {showArchived ? <ArchiveRestore className="w-5 h-5" /> : <Archive className="w-5 h-5" />}
+                        {showArchived ? 'عرض الفروع النشطة' : 'عرض الأرشيف'}
+                    </button>
                 </div>
             </div>
 
@@ -110,9 +106,9 @@ const BranchList: React.FC = () => {
                     }))}
                     loading={loading}
                     onAction={handleAction}
-                    onBatchAction={handleBatchAction}
-                    searchTerm={searchTerm}
                     onSearch={setSearchTerm}
+                    searchTerm={searchTerm}
+                    onBatchAction={handleBatchAction}
                 />
             </div>
 
@@ -122,11 +118,13 @@ const BranchList: React.FC = () => {
                 onClose={() => setIsModalOpen(false)}
                 schemaKey="branches_management_v1"
                 initialData={selectedItem}
-                title={modalAction === 'add' ? 'إضافة فرع جديد' : 'تعديل بيانات الفرع'}
+                title={modalAction === 'add' ? 'إضافة فرع سيادي' : 'تعديل السجل السيادي'}
                 onComplete={handleModalComplete}
             />
         </div>
     );
 };
 
-export default BranchList;
+
+export default BranchesManagement;
+

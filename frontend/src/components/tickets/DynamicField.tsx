@@ -17,7 +17,7 @@ interface DynamicFieldProps {
         type: string;
         required?: boolean;
         placeholder?: string;
-        options?: { label: string; value: any; parentId?: any }[];
+        options?: { label: string; value: unknown; parentId?: unknown }[];
         filterBy?: string;
         multiple?: boolean;
         accept?: string;
@@ -50,10 +50,10 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({ field, value, formDa
                             type="text"
                             value={value || ''}
                             onChange={(e) => onChange(e.target.value)}
-                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-3 pl-10 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl px-5 py-5 pl-12 text-white text-lg md:text-xl font-bold focus:ring-4 focus:ring-blue-500/30 outline-none transition-all placeholder:text-white/20"
                             placeholder={field.placeholder}
                         />
-                        <Type className="absolute left-3 top-3.5 w-5 h-5 text-white/40" />
+                        <Type className="absolute left-4 top-5 w-6 h-6 text-white/40" />
                     </div>
                 );
             case 'number':
@@ -63,10 +63,10 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({ field, value, formDa
                             type="number"
                             value={value || ''}
                             onChange={(e) => onChange(e.target.value)}
-                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-3 pl-10 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all"
+                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl px-5 py-5 pl-12 text-white text-lg md:text-xl font-bold focus:ring-4 focus:ring-blue-500/30 outline-none transition-all placeholder:text-white/20"
                             placeholder={field.placeholder || '0'}
                         />
-                        <Hash className="absolute left-3 top-3.5 w-5 h-5 text-white/40" />
+                        <Hash className="absolute left-4 top-5 w-6 h-6 text-white/40" />
                     </div>
                 );
             case 'textarea':
@@ -75,10 +75,10 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({ field, value, formDa
                         <textarea
                             value={value || ''}
                             onChange={(e) => onChange(e.target.value)}
-                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-3 pl-10 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all min-h-[100px]"
+                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl px-5 py-5 pl-12 text-white text-lg md:text-xl font-bold focus:ring-4 focus:ring-blue-500/30 outline-none transition-all min-h-[150px] placeholder:text-white/20"
                             placeholder={field.placeholder}
                         />
-                        <AlignLeft className="absolute left-3 top-3.5 w-5 h-5 text-white/40" />
+                        <AlignLeft className="absolute left-4 top-5 w-6 h-6 text-white/40" />
                     </div>
                 );
             case 'select':
@@ -87,18 +87,22 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({ field, value, formDa
                         <select
                             value={value || ''}
                             onChange={(e) => onChange(e.target.value)}
-                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-3 pl-10 text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all appearance-none"
+                            className="w-full bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl px-5 py-5 pl-12 text-white text-lg md:text-xl font-bold focus:ring-4 focus:ring-blue-500/30 outline-none transition-all appearance-none"
                         >
                             <option value="" className="text-slate-900">{field.placeholder || 'اختر...'}</option>
-                            {field.options
-                                ?.filter(opt => !field.filterBy || opt.parentId === formData?.[field.filterBy])
+                            {(field.options || [])
+                                .filter(opt => {
+                                    if (!field.filterBy) return true;
+                                    const parentVal = formData?.[field.filterBy];
+                                    return opt.parentId === parentVal;
+                                })
                                 .map((opt) => (
-                                    <option key={opt.value} value={opt.value} className="text-slate-900">
+                                    <option key={String(opt.value)} value={String(opt.value)} className="text-slate-900 font-bold">
                                         {opt.label}
                                     </option>
                                 ))}
                         </select>
-                        <List className="absolute left-3 top-3.5 w-5 h-5 text-white/40" />
+                        <List className="absolute left-4 top-5 w-6 h-6 text-white/40" />
                     </div>
                 );
             case 'file':
@@ -168,10 +172,10 @@ export const DynamicField: React.FC<DynamicFieldProps> = ({ field, value, formDa
     };
 
     return (
-        <div className="space-y-2">
-            <label className="block text-sm font-bold text-white/80 mr-1">
+        <div className="space-y-3">
+            <label className="block text-lg md:text-xl font-black text-white leading-none mr-2">
                 {field.label}
-                {field.required && <span className="text-red-400 mr-1">*</span>}
+                {field.required && <span className="text-red-400 mr-1 text-xl">*</span>}
             </label>
             {renderInput()}
         </div>

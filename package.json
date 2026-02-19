@@ -7,6 +7,8 @@
     "migrate:yes": "ts-node --project tsconfig.scripts.json scripts/migrate-data.ts --yes",
     "migrate:brands": "ts-node --project tsconfig.scripts.json scripts/migrate-brands-only.ts",
     "migrate:sectors-areas": "ts-node --project tsconfig.scripts.json scripts/migrate-sectors-areas.ts",
+    "seed": "ts-node --project tsconfig.scripts.json scripts/seed_master_data.ts",
+    "seed:dry": "ts-node --project tsconfig.scripts.json scripts/seed_master_data.ts --dry-run",
     "dev": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend"
   },

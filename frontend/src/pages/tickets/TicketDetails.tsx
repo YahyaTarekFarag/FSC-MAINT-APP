@@ -25,7 +25,10 @@ import { AssetHistoryDrawer } from '../../components/assets/AssetHistoryDrawer';
 import TechnicianRecommendation from '../../components/tickets/TechnicianRecommendation';
 import TechnicianMap from '../../pages/admin/users/TechnicianMap';
 import { useGeoLocation } from '../../hooks/useGeoLocation';
-import { X } from 'lucide-react';
+import { X, MessageCircle } from 'lucide-react';
+import { NotificationEngine } from '../../utils/NotificationEngine';
+import { TicketAuditLog } from '../../components/tickets/TicketAuditLog';
+import toast from 'react-hot-toast';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     branch: Database['public']['Tables']['branches']['Row'];
@@ -59,6 +62,24 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
     const [showDispatchMap, setShowDispatchMap] = useState(false);
     const { getCoordinates } = useGeoLocation();
 
+    const handleWhatsApp = async (phone: string | null, type: 'branch' | 'technician') => {
+        if (!phone || !ticket) return;
+
+        const templateKey = ticket.status === 'open' ? 'new_ticket' :
+            ticket.status === 'in_progress' ? 'ticket_assigned' :
+                'new_ticket'; // default
+
+        const data = {
+            name: type === 'branch' ? ticket.branch.name_ar : (ticket.technician?.full_name || 'الفني'),
+            ticket_id: ticket.id.slice(0, 8),
+            branch: ticket.branch.name_ar,
+            issue: ticket.fault_category,
+            reason: '' // For rejection if needed
+        };
+
+        await NotificationEngine.openWhatsApp(phone, templateKey, data);
+    };
+
     // Assignment State
     // Assignment State
     const [selectedTech, setSelectedTech] = useState<string>('');
@@ -71,7 +92,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
         try {
             const { data, error } = await supabase
                 .from('tickets')
-                .select('*, branch:branches!inner(*), technician:technician_id(full_name), maintenance_assets(name)')
+                .select('*, branch:branches!inner(id, name_ar, google_map_link), technician:technician_id(full_name), maintenance_assets(name)')
                 .eq('id', id)
                 .single();
 
@@ -120,11 +141,11 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
 
             if (error) throw error;
             await fetchTicketDetails();
-            alert('تم تعيين الفني بنجاح');
+            toast.success('تم تعيين الفني بنجاح');
             setSelectedTech('');
         } catch (error) {
             console.error('Error assigning technician:', error);
-            alert('فشل تعيين الفني');
+            toast.error('فشل تعيين الفني');
         } finally {
             setIsAssigning(false);
         }
@@ -171,18 +192,19 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
 
             // Refresh ticket data
             await fetchTicketDetails();
+            toast.success('تم تحديث حالة البلاغ بنجاح');
         } catch (err) {
             console.error('Error updating ticket status:', err);
-            alert('خطأ في تحديث حالة البلاغ');
+            toast.error('خطأ في تحديث حالة البلاغ');
         } finally {
             setActionLoading(false);
         }
     };
 
     const statusConfig = {
-        open: { label: 'مفتوح', color: 'bg-red-50 text-red-600 border-red-100', icon: AlertTriangle },
-        in_progress: { label: 'قيد التنفيذ', color: 'bg-blue-50 text-blue-600 border-blue-100', icon: Play },
-        closed: { label: 'مغلق', color: 'bg-emerald-50 text-emerald-600 border-emerald-100', icon: CheckCircle2 }
+        open: { label: 'مفتوح', color: 'bg-amber-500/10 text-amber-600 border-amber-500/20', icon: AlertTriangle },
+        in_progress: { label: 'قيد التنفيذ', color: 'bg-blue-500/10 text-blue-600 border-blue-500/20', icon: Play },
+        closed: { label: 'مغلق', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', icon: CheckCircle2 }
     };
 
     const priorityLabels: Record<string, string> = {
@@ -249,9 +271,9 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                                 <button
                                     disabled={actionLoading}
                                     onClick={() => updateStatus('in_progress')}
-                                    className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50"
+                                    className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 hover:bg-blue-700 active:scale-95 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50"
                                 >
-                                    {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
+                                    {actionLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Play className="w-6 h-6 fill-current" />}
                                     بدء العمل
                                 </button>
                             )}
@@ -259,9 +281,9 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                                 <button
                                     disabled={actionLoading}
                                     onClick={() => setShowCloseModal(true)}
-                                    className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50"
+                                    className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 hover:bg-emerald-700 active:scale-95 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                                 >
-                                    {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                                    {actionLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
                                     إغلاق البلاغ
                                 </button>
                             )}
@@ -343,6 +365,11 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
 
                     {/* Activity & Comments Feed */}
                     <TicketComments ticketId={ticket.id} />
+
+                    {/* Audit Trail (Admin/Manager only) */}
+                    {(userProfile?.role === 'admin' || userProfile?.role === 'manager') && (
+                        <TicketAuditLog recordId={ticket.id} />
+                    )}
                 </div>
 
                 {/* Sidebar Info */}
@@ -357,7 +384,23 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                         <div className="space-y-4">
                             <div className="flex flex-col gap-1">
                                 <span className="text-xs text-slate-400 font-bold">اسم الفرع</span>
-                                <span className="text-slate-700 font-bold">{ticket.branch.name_ar}</span>
+                                <div className="flex items-center justify-between">
+                                    <button
+                                        onClick={() => navigate(`/branches?id=${ticket.branch.id}`)}
+                                        className="text-slate-700 font-bold hover:text-blue-600 transition-colors text-right"
+                                    >
+                                        {ticket.branch.name_ar}
+                                    </button>
+                                    {ticket.branch.phone && (
+                                        <button
+                                            onClick={() => handleWhatsApp(ticket.branch.phone, 'branch')}
+                                            className="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 active:scale-90 transition-all border border-emerald-200/50"
+                                            title="واتساب الفرع"
+                                        >
+                                            <MessageCircle className="w-5 h-5" />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="flex flex-col gap-1">
@@ -521,7 +564,21 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                                         </div>
                                         <div>
                                             <p className="text-[10px] text-slate-400">الفني المعني</p>
-                                            <p className="text-sm font-bold">{ticket.technician?.full_name || 'غير معروف'}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-sm font-bold">{ticket.technician?.full_name || 'غير معروف'}</p>
+                                                {ticket.technician_id && (
+                                                    <button
+                                                        onClick={async () => {
+                                                            const { data: profileData } = await supabase.from('profiles').select('phone').eq('id', ticket.technician_id as string).single();
+                                                            handleWhatsApp(profileData ? (profileData as { phone: string | null }).phone : null, 'technician');
+                                                        }}
+                                                        className="p-2.5 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 active:scale-90 transition-all"
+                                                        title="واتساب الفني"
+                                                    >
+                                                        <MessageCircle className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 )}

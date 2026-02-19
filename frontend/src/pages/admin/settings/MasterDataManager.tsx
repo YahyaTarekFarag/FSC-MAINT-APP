@@ -1,401 +1,279 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import {
-    Plus, Trash2, Settings, Layers, Box, Loader2
+    Plus, Trash2, Settings, Layers, Box, Loader2, ArrowRight, Shield, RefreshCw, Archive, ArchiveRestore
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import ConfirmDialog from '../../../components/ui/ConfirmDialog';
-
-type Brand = {
-    id: string;
-    name_ar: string;
-    logo_url: string | null;
-    created_at: string;
-};
+import { useSovereignQuery } from '../../../hooks/useSovereignQuery';
+import { useSovereignMutation } from '../../../hooks/useSovereignMutation';
 
 const MasterDataManager = () => {
     const [activeTab, setActiveTab] = useState<'brands' | 'units' | 'settings'>('brands');
-    const [brands, setBrands] = useState<Brand[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [showArchived, setShowArchived] = useState(false);
 
-    // Brand Form
+    // Brand Forms
     const [newBrandName, setNewBrandName] = useState('');
 
-    // Unit Form
-    const [units, setUnits] = useState<{ id: number; name_ar: string }[]>([]);
+    // Unit Forms
     const [newUnitName, setNewUnitName] = useState('');
 
-    // Settings State (controlled inputs)
+    // Settings State
     const [slaThreshold, setSlaThreshold] = useState(24);
     const [lowStockThreshold, setLowStockThreshold] = useState(5);
     const [savingSettings, setSavingSettings] = useState(false);
 
-    // Confirm Dialog State
-    const [confirmState, setConfirmState] = useState<{
-        isOpen: boolean;
-        type: 'brand' | 'unit';
-        id: string | number;
-        title: string;
-        message: string;
-    }>({
-        isOpen: false,
-        type: 'brand',
-        id: '',
-        title: '',
-        message: ''
+    // Queries & Mutations
+    const { data: brands, loading: loadingBrands, refetch: refetchBrands } = useSovereignQuery({
+        table: 'brands',
+        showArchived,
+        orderBy: { column: 'name_ar', ascending: true }
     });
 
-    useEffect(() => {
-        if (activeTab === 'brands') fetchBrands();
-        if (activeTab === 'units') fetchUnits();
-        if (activeTab === 'settings') fetchSettings();
-    }, [activeTab]);
+    const { data: units, refetch: refetchUnits } = useSovereignQuery({
+        table: 'unit_types',
+        showArchived: false,
+        orderBy: { column: 'name_ar', ascending: true }
+    });
 
-    const fetchBrands = async () => {
-        setLoading(true);
-        try {
-            const { data, error } = await supabase.from('brands').select('*').order('name_ar');
-            if (error) throw error;
-            setBrands(data || []);
-        } catch (err) {
-            console.error('Error fetching brands:', err);
-            toast.error('خطأ في تحميل العلامات التجارية');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchUnits = async () => {
-        setLoading(true);
-        try {
-            const { data, error } = await supabase.from('unit_types').select('*').order('name_ar');
-            if (error) throw error;
-            setUnits(data || []);
-        } catch (err) {
-            console.error('Error fetching units:', err);
-            toast.error('خطأ في تحميل الوحدات');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchSettings = async () => {
-        setLoading(true);
-        try {
-            const { data } = await supabase
-                .from('system_config')
-                .select('key, value')
-                .in('key', ['sla_threshold_hours', 'low_stock_threshold']);
-
-            if (data) {
-                for (const item of data) {
-                    if ((item as any).key === 'sla_threshold_hours') setSlaThreshold(Number((item as any).value) || 24);
-                    if ((item as any).key === 'low_stock_threshold') setLowStockThreshold(Number((item as any).value) || 5);
-                }
-            }
-        } catch (err) {
-            console.error('Error fetching settings:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { createRecord: createBrand, softDeleteRecord: archiveBrand, restoreRecord: restoreBrand } = useSovereignMutation({ table_name: 'brands' });
+    const { createRecord: createUnit } = useSovereignMutation({ table_name: 'unit_types' });
 
     const handleAddBrand = async (e: React.FormEvent) => {
         e.preventDefault();
-        const brandName = newBrandName.trim();
-        if (!brandName) return;
-
-        setLoading(true);
-        console.log('Attempting to add brand:', brandName);
-
-        try {
-            const { error } = await (supabase.from('brands') as any).insert([{ name_ar: brandName }]);
-            if (error) throw error;
-
-            toast.success('تمت إضافة العلامة التجارية بنجاح ✅');
+        if (!newBrandName.trim()) return;
+        const { error } = await createBrand({ name_ar: newBrandName.trim() });
+        if (!error) {
             setNewBrandName('');
-            fetchBrands();
-        } catch (error: any) {
-            console.error('Add brand failed:', error);
-            toast.error('فشل إضافة العلامة التجارية: ' + (error.message || 'خطأ غير معروف'));
-        } finally {
-            setLoading(false);
+            refetchBrands();
         }
     };
 
-    const confirmDeleteBrand = (id: string) => {
-        setConfirmState({
-            isOpen: true,
-            type: 'brand',
-            id,
-            title: 'حذف علامة تجارية',
-            message: 'هل أنت متأكد من حذف هذه العلامة التجارية؟ قد يؤثر ذلك على المنتجات المرتبطة بها.'
-        });
+    const handleArchiveBrand = async (id: string, name: string) => {
+        if (window.confirm(`هل أنت متأكد من أرشفة العلامة التجارية: ${name}؟`)) {
+            const { error } = await archiveBrand(id);
+            if (!error) refetchBrands();
+        }
     };
 
-    const handleDeleteBrand = async () => {
-        setLoading(true);
-        console.log('Attempting to delete brand id:', confirmState.id);
-
-        try {
-            const { error } = await supabase.from('brands').delete().eq('id', String(confirmState.id));
-            if (error) throw error;
-
-            toast.success('تم حذف العلامة التجارية بنجاح ✅');
-            fetchBrands();
-        } catch (error: any) {
-            console.error('Delete brand failed:', error);
-            toast.error('فشل حذف العلامة التجارية: ' + (error.message || 'خطأ غير معروف'));
-        } finally {
-            setLoading(false);
-            closeConfirm();
-        }
+    const handleRestoreBrand = async (id: string) => {
+        const { error } = await restoreBrand(id);
+        if (!error) refetchBrands();
     };
 
     const handleAddUnit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const unitName = newUnitName.trim();
-        if (!unitName) return;
-
-        setLoading(true);
-        console.log('Attempting to add unit:', unitName);
-
-        try {
-            const { error } = await (supabase.from('unit_types') as any).insert([{ name_ar: unitName }]);
-            if (error) throw error;
-
-            toast.success('تمت إضافة الوحدة بنجاح ✅');
+        if (!newUnitName.trim()) return;
+        const { error } = await createUnit({ name_ar: newUnitName.trim() });
+        if (!error) {
             setNewUnitName('');
-            fetchUnits();
-        } catch (error: any) {
-            console.error('Add unit failed:', error);
-            toast.error('فشل إضافة الوحدة: ' + (error.message || 'خطأ غير معروف'));
-        } finally {
-            setLoading(false);
+            refetchUnits();
         }
-    };
-
-    const confirmDeleteUnit = (id: number) => {
-        setConfirmState({
-            isOpen: true,
-            type: 'unit',
-            id,
-            title: 'حذف وحدة',
-            message: 'هل أنت متأكد من حذف هذا النوع من الوحدات؟'
-        });
-    };
-
-    const handleDeleteUnit = async () => {
-        setLoading(true);
-        console.log('Attempting to delete unit id:', confirmState.id);
-
-        try {
-            const { error } = await supabase.from('unit_types').delete().eq('id', Number(confirmState.id));
-            if (error) throw error;
-
-            toast.success('تم حذف الوحدة بنجاح ✅');
-            fetchUnits();
-        } catch (error: any) {
-            console.error('Delete unit failed:', error);
-            toast.error('فشل حذف الوحدة: ' + (error.message || 'خطأ غير معروف'));
-        } finally {
-            setLoading(false);
-            closeConfirm();
-        }
-    };
-
-    const closeConfirm = () => {
-        setConfirmState(prev => ({ ...prev, isOpen: false }));
-    };
-
-    const handleConfirmAction = () => {
-        if (confirmState.type === 'brand') handleDeleteBrand();
-        else handleDeleteUnit();
     };
 
     const handleSaveSettings = async () => {
         setSavingSettings(true);
         try {
             const { error: err1 } = await (supabase.from('system_config') as any).upsert(
-                { key: 'sla_threshold_hours', value: String(slaThreshold), description: 'الحد الحرج للتذاكر بالساعات' },
-                { onConflict: 'key' }
+                { key: 'sla_threshold_hours', value: String(slaThreshold), description: 'الحد الحرج للتذاكر بالساعات' }
             );
 
             const { error: err2 } = await (supabase.from('system_config') as any).upsert(
-                { key: 'low_stock_threshold', value: String(lowStockThreshold), description: 'حد تنبيه انخفاض المخزون' },
-                { onConflict: 'key' }
+                { key: 'low_stock_threshold', value: String(lowStockThreshold), description: 'حد تنبيه انخفاض المخزون' }
             );
 
-            if (err1 || err2) {
-                throw new Error(err1?.message || err2?.message);
-            }
-
-            toast.success('تم حفظ إعدادات النظام بنجاح ✅');
-        } catch (err) {
-            console.error('Settings save error:', err);
-            toast.error('فشل في حفظ الإعدادات');
+            if (err1 || err2) throw new Error(err1?.message || err2?.message);
+            toast.success('تم تحديث التكوين السيادي بنجاح');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            toast.error(`فشل في حفظ الإعدادات: ${message}`);
         } finally {
             setSavingSettings(false);
         }
     };
 
     const tabs = [
-        { key: 'brands' as const, label: 'العلامات التجارية', icon: Layers },
-        { key: 'units' as const, label: 'أنواع الوحدات', icon: Box },
-        { key: 'settings' as const, label: 'إعدادات النظام', icon: Settings },
+        { key: 'brands' as const, label: 'العلامات', icon: Layers },
+        { key: 'units' as const, label: 'الفئات', icon: Box },
+        { key: 'settings' as const, label: 'الإعدادات', icon: Settings },
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 p-6 lg:p-8" dir="rtl">
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-slate-900">إدارة البيانات الأساسية</h1>
-                <p className="text-slate-500 text-sm mt-1">إدارة العلامات التجارية، أنواع الوحدات، وإعدادات النظام</p>
-            </div>
+        <div className="min-h-screen bg-slate-950 text-white p-6 lg:p-12 font-sans rtl" dir="rtl">
+            <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,_rgba(37,99,235,0.07),_transparent_50%)] pointer-events-none" />
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-6 bg-white p-1 rounded-xl border border-slate-100 w-fit">
-                {tabs.map(tab => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${activeTab === tab.key ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                        <tab.icon className="w-4 h-4" />
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-                {/* Brands Tab */}
-                {activeTab === 'brands' && (
+            <div className="relative z-10 max-w-7xl mx-auto space-y-10">
+                {/* Header */}
+                <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                     <div className="space-y-4">
-                        <form onSubmit={handleAddBrand} className="flex gap-3 items-end">
-                            <div className="flex-1">
-                                <label className="text-sm font-bold text-slate-700 block mb-1">اسم العلامة التجارية</label>
-                                <input
-                                    value={newBrandName}
-                                    onChange={e => setNewBrandName(e.target.value)}
-                                    className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="مثال: سامسونج"
-                                />
-                            </div>
-                            <button type="submit" disabled={loading} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-blue-500 flex items-center gap-2">
-                                <Plus className="w-4 h-4" /> إضافة
-                            </button>
-                        </form>
-                        <div className="divide-y divide-slate-100">
-                            {brands.map(brand => (
-                                <div key={brand.id} className="flex items-center justify-between py-3 px-2 hover:bg-slate-50 rounded-lg">
-                                    <span className="font-bold text-slate-800">{brand.name_ar}</span>
-                                    <button onClick={() => confirmDeleteBrand(brand.id)} className="text-red-500 hover:text-red-700 p-1">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            ))}
+                        <div className="flex items-center gap-3 text-blue-400 font-black uppercase tracking-[0.3em] text-xs">
+                            <Shield className="w-4 h-4" />
+                            Core Administration
                         </div>
+                        <h1 className="text-6xl font-black tracking-tighter text-white">
+                            إعدادات <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500">السيادة</span>
+                        </h1>
                     </div>
-                )}
+                </header>
 
-                {/* Units Tab */}
-                {activeTab === 'units' && (
-                    <div className="space-y-4">
-                        <form onSubmit={handleAddUnit} className="flex gap-3 items-end">
-                            <div className="flex-1">
-                                <label className="text-sm font-bold text-slate-700 block mb-1">اسم الوحدة</label>
-                                <input
-                                    value={newUnitName}
-                                    onChange={e => setNewUnitName(e.target.value)}
-                                    className="w-full p-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="مثال: ثلاجة عرض"
-                                />
-                            </div>
-                            <button type="submit" disabled={loading} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-blue-500 flex items-center gap-2">
-                                <Plus className="w-4 h-4" /> إضافة
-                            </button>
-                        </form>
-                        <div className="divide-y divide-slate-100">
-                            {units.map(unit => (
-                                <div key={unit.id} className="flex items-center justify-between py-3 px-2 hover:bg-slate-50 rounded-lg">
-                                    <span className="font-bold text-slate-800">{unit.name_ar}</span>
-                                    <button onClick={() => confirmDeleteUnit(unit.id)} className="text-red-500 hover:text-red-700 p-1">
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Settings Tab (Persistent) */}
-                {activeTab === 'settings' && (
-                    <div className="space-y-6 max-w-2xl">
-                        <h3 className="font-bold text-lg text-slate-800 border-b border-slate-100 pb-2">إعدادات النظام</h3>
-
-                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                            <div>
-                                <div className="font-bold text-slate-900">الحد الحرج للتذاكر</div>
-                                <div className="text-sm text-slate-500">تحويل التذكرة تلقائياً إلى "عاجل" إذا لم يتم البدء بها خلال</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="number"
-                                    value={slaThreshold}
-                                    onChange={e => setSlaThreshold(Number(e.target.value))}
-                                    min={1}
-                                    className="w-20 p-2 text-center rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
-                                <span className="text-sm font-bold text-slate-600">ساعة</span>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                            <div>
-                                <div className="font-bold text-slate-900">تنبيه انخفاض المخزون</div>
-                                <div className="text-sm text-slate-500">إرسال إشعار عندما تقل الكمية عن</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="number"
-                                    value={lowStockThreshold}
-                                    onChange={e => setLowStockThreshold(Number(e.target.value))}
-                                    min={1}
-                                    className="w-20 p-2 text-center rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
-                                <span className="text-sm font-bold text-slate-600">وحدة</span>
-                            </div>
-                        </div>
-
-                        <div className="pt-4 flex justify-end">
+                <div className="flex flex-col lg:flex-row gap-8">
+                    {/* Navigation Sidebar */}
+                    <aside className="w-full lg:w-72 space-y-3">
+                        {tabs.map(tab => (
                             <button
-                                onClick={handleSaveSettings}
-                                disabled={savingSettings}
-                                className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-slate-800 transition flex items-center gap-2 disabled:opacity-50"
+                                key={tab.key}
+                                onClick={() => setActiveTab(tab.key)}
+                                className={`w-full flex items-center justify-between p-5 rounded-[2rem] transition-all border ${activeTab === tab.key
+                                    ? 'bg-blue-600 text-white border-blue-500 shadow-[0_20px_40px_rgba(37,99,235,0.2)]'
+                                    : 'bg-white/5 text-white/40 border-white/5 hover:bg-white/10 hover:text-white'
+                                    }`}
                             >
-                                {savingSettings ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        جاري الحفظ...
-                                    </>
-                                ) : (
-                                    'حفظ الإعدادات'
-                                )}
+                                <div className="flex items-center gap-4">
+                                    <tab.icon className={`w-5 h-5 ${activeTab === tab.key ? 'text-white' : 'text-blue-400'}`} />
+                                    <span className="font-black text-sm tracking-tight">{tab.label}</span>
+                                </div>
+                                {activeTab === tab.key && <ArrowRight className="w-4 h-4" />}
                             </button>
-                        </div>
-                    </div>
-                )}
-            </div>
+                        ))}
+                    </aside>
 
-            <ConfirmDialog
-                isOpen={confirmState.isOpen}
-                title={confirmState.title}
-                message={confirmState.message}
-                confirmLabel="حذف"
-                variant="danger"
-                isLoading={loading}
-                onConfirm={handleConfirmAction}
-                onCancel={closeConfirm}
-            />
+                    {/* Main Content Area */}
+                    <main className="flex-1 bg-white/5 backdrop-blur-3xl rounded-[3.5rem] border border-white/10 p-10 shadow-2xl overflow-hidden relative min-h-[600px]">
+                        <div className="absolute top-0 left-0 w-64 h-64 bg-blue-600/5 blur-[80px] pointer-events-none rounded-full" />
+
+                        {activeTab === 'brands' && (
+                            <div className="space-y-8 animate-in fade-in duration-500">
+                                <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-black/20 p-6 rounded-[2.5rem] border border-white/5">
+                                    <form onSubmit={handleAddBrand} className="flex-1 flex gap-4 w-full">
+                                        <input
+                                            value={newBrandName}
+                                            onChange={e => setNewBrandName(e.target.value)}
+                                            className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white font-bold focus:border-blue-500 outline-none transition-all"
+                                            placeholder="اسم العلامة التجارية الجديدة..."
+                                        />
+                                        <button className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black transition-all flex items-center gap-2 shadow-xl shadow-blue-600/20">
+                                            <Plus className="w-5 h-5" /> إضافة
+                                        </button>
+                                    </form>
+                                    <button
+                                        onClick={() => setShowArchived(!showArchived)}
+                                        className={`p-4 rounded-2xl border transition-all ${showArchived ? 'bg-amber-500 border-amber-400' : 'bg-white/5 border-white/10 hover:bg-white/10 text-white/40'}`}
+                                        title={showArchived ? 'عرض النشط' : 'عرض الأرشيف'}
+                                    >
+                                        {showArchived ? <ArchiveRestore className="w-5 h-5 text-white" /> : <Archive className="w-5 h-5" />}
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {loadingBrands ? (
+                                        <div className="col-span-full py-20 flex flex-col items-center gap-4 text-white/20">
+                                            <Loader2 className="w-10 h-10 animate-spin" />
+                                            <span className="font-black uppercase tracking-widest text-[10px]">Synchronizing...</span>
+                                        </div>
+                                    ) : brands.map(brand => (
+                                        <div key={brand.id} className="group flex items-center justify-between p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/20 transition-all hover:bg-white/[0.08]">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-2 h-2 rounded-full bg-blue-500 group-hover:shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all" />
+                                                <span className="font-black text-lg tracking-tight">{brand.name_ar}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {showArchived ? (
+                                                    <button onClick={() => handleRestoreBrand(brand.id)} className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl hover:bg-emerald-500/20 transition-all">
+                                                        <RefreshCw className="w-4 h-4" />
+                                                    </button>
+                                                ) : (
+                                                    <button onClick={() => handleArchiveBrand(brand.id, brand.name_ar)} className="p-2 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-all">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'units' && (
+                            <div className="space-y-8 animate-in fade-in duration-500">
+                                <form onSubmit={handleAddUnit} className="flex gap-4 p-6 bg-black/20 rounded-[2.5rem] border border-white/5">
+                                    <input
+                                        value={newUnitName}
+                                        onChange={e => setNewUnitName(e.target.value)}
+                                        className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white font-bold focus:border-blue-500 outline-none transition-all"
+                                        placeholder="اسم الفئة الجديدة..."
+                                    />
+                                    <button className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-4 rounded-2xl font-black transition-all flex items-center gap-2 shadow-xl shadow-indigo-600/20">
+                                        <Plus className="w-5 h-5" /> إضافة
+                                    </button>
+                                </form>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {units.map(unit => (
+                                        <div key={unit.id} className="group flex items-center justify-between p-6 bg-white/5 rounded-3xl border border-white/5 hover:border-white/20 transition-all">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                                <span className="font-black text-lg tracking-tight">{unit.name_ar}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'settings' && (
+                            <div className="space-y-10 animate-in fade-in duration-500 max-w-2xl">
+                                <div className="space-y-8">
+                                    <div className="p-8 bg-white/5 rounded-[2.5rem] border border-white/10 space-y-6">
+                                        <div className="flex items-center justify-between gap-6">
+                                            <div className="space-y-1">
+                                                <h4 className="font-black text-xl tracking-tight text-white">الحد الحرج للتذاكر</h4>
+                                                <p className="text-white/20 text-xs font-bold leading-relaxed">تحويل التذكرة تلقائياً إلى "عاجل" إذا لم يتم البدء بها خلال المدة المحددة.</p>
+                                            </div>
+                                            <div className="flex items-center gap-3 bg-black/40 p-4 rounded-2xl border border-white/5">
+                                                <input
+                                                    type="number"
+                                                    value={slaThreshold}
+                                                    onChange={e => setSlaThreshold(Number(e.target.value))}
+                                                    className="w-16 bg-transparent text-center font-black text-xl text-blue-400 outline-none"
+                                                />
+                                                <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">HRS</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="h-px bg-white/5 w-full" />
+
+                                        <div className="flex items-center justify-between gap-6">
+                                            <div className="space-y-1">
+                                                <h4 className="font-black text-xl tracking-tight text-white">تنبيه انخفاض المخزون</h4>
+                                                <p className="text-white/20 text-xs font-bold leading-relaxed">إرسال إشعار للنظام والرقابة عندما تقل الكمية المتوفرة عن هذا الحد.</p>
+                                            </div>
+                                            <div className="flex items-center gap-3 bg-black/40 p-4 rounded-2xl border border-white/5">
+                                                <input
+                                                    type="number"
+                                                    value={lowStockThreshold}
+                                                    onChange={e => setLowStockThreshold(Number(e.target.value))}
+                                                    className="w-16 bg-transparent text-center font-black text-xl text-indigo-400 outline-none"
+                                                />
+                                                <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">QTY</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-4">
+                                    <button
+                                        onClick={handleSaveSettings}
+                                        disabled={savingSettings}
+                                        className="bg-white text-slate-900 px-12 py-5 rounded-[2rem] font-black text-lg transition-all hover:scale-105 active:scale-95 shadow-[0_20px_40px_rgba(255,255,255,0.1)] flex items-center gap-3 disabled:opacity-50"
+                                    >
+                                        {savingSettings ? <Loader2 className="w-6 h-6 animate-spin" /> : <Settings className="w-6 h-6" />}
+                                        حفظ التعديلات
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            </div>
         </div>
     );
 };

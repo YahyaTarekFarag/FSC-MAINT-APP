@@ -22,7 +22,8 @@ import {
     TrendingUp,
     ArrowRight,
     AlertCircle,
-    QrCode
+    QrCode,
+    Compass
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
@@ -135,25 +136,25 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                 <div className="flex flex-wrap gap-4">
                     <button
                         onClick={() => navigate('/tickets/new')}
-                        className="flex-1 lg:flex-none bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-8 py-4 rounded-2xl font-black shadow-xl shadow-blue-900/40 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 group"
+                        className="flex-1 lg:flex-none bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-8 py-5 rounded-3xl font-black shadow-xl shadow-blue-900/40 hover:-translate-y-1 active:scale-95 transition-all flex items-center justify-center gap-3 group border border-white/10"
                     >
                         <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform" />
                         بلاغ جديد
                     </button>
                     <button
                         onClick={() => setIsQRScannerOpen(true)}
-                        className="flex-1 lg:flex-none bg-white/5 backdrop-blur-md border border-white/10 text-white px-8 py-4 rounded-2xl font-black hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                        className="flex-1 lg:flex-none bg-white/5 backdrop-blur-xl border border-white/10 text-white px-8 py-5 rounded-3xl font-black hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center gap-3 shadow-lg"
                     >
                         <QrCode className="w-6 h-6 text-blue-400" />
                         مسح كود
                     </button>
-                    {userProfile?.role === 'admin' && (
+                    {(userProfile?.role === 'admin' || userProfile?.role === 'technician') && (
                         <button
-                            onClick={() => navigate('/admin/assets')}
-                            className="w-full lg:w-auto bg-white/5 backdrop-blur-md border border-white/10 text-white/60 px-8 py-4 rounded-2xl font-black hover:text-white transition-all flex items-center justify-center gap-2"
+                            onClick={() => navigate('/maps')}
+                            className="w-full lg:w-auto bg-white/5 backdrop-blur-xl border border-white/10 text-white px-8 py-5 rounded-3xl font-black hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center gap-3 shadow-lg"
                         >
-                            <Building2 className="w-6 h-6" />
-                            الأصول
+                            <Compass className="w-6 h-6 text-emerald-400" />
+                            خريطة الفروع
                         </button>
                     )}
                 </div>

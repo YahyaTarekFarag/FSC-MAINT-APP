@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -12,31 +12,51 @@ import {
     X,
     Bell,
     LogOut,
-    Database,
     Shield,
     Briefcase,
     UserCog,
     FileInput,
     Map,
-    Clock
+    Clock,
+    ChevronLeft
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import type { Session } from '@supabase/supabase-js';
+import type { Database } from '../lib/supabase';
 
-const AdminLayout = () => {
+type Profile = Database['public']['Tables']['profiles']['Row'];
+
+interface AdminLayoutProps {
+    profile: Profile | null;
+    handleSignOut: () => Promise<void>;
+}
+
+const AdminLayout: React.FC<AdminLayoutProps> = ({ profile, handleSignOut }) => {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [searchOpen, setSearchOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Close sidebar on mobile when route changes
     useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth < 768) {
+                setSidebarOpen(false);
+            } else {
+                setSidebarOpen(true);
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        handleResize();
+
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
         }
+
+        return () => window.removeEventListener('resize', handleResize);
     }, [location]);
 
-    // Handle Quick Search (Cmd/Ctrl + K)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -52,11 +72,6 @@ const AdminLayout = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        navigate('/login');
-    };
-
     const navItems = [
         { path: '/admin/dashboard', icon: LayoutDashboard, label: 'لوحة البيانات' },
         { path: '/admin/tickets', icon: Ticket, label: 'إدارة البلاغات' },
@@ -65,7 +80,7 @@ const AdminLayout = () => {
         { path: '/admin/map', icon: Map, label: 'الخريطة المباشرة' },
         { path: '/admin/users', icon: UserCog, label: 'إدارة المستخدمين' },
         { path: '/admin/inventory', icon: Store, label: 'المخزن' },
-        { path: '/admin/assets', icon: Database, label: 'الأصول' },
+        { path: '/admin/assets', icon: Settings, label: 'الأصول' }, // Map pin or Database icon
         { path: '/admin/maintenance/schedules', icon: Clock, label: 'الصيانة الوقائية' },
         { path: '/admin/structure', icon: Users, label: 'الهيكل التنظيمي' },
         { path: '/admin/settings/forms', icon: FileInput, label: 'نماذج الإغلاق' },
@@ -75,7 +90,7 @@ const AdminLayout = () => {
     ];
 
     return (
-        <div className="min-h-screen bg-slate-50 flex font-sans" dir="rtl">
+        <div className="min-h-screen bg-transparent flex font-sans rtl" dir="rtl">
             {/* Mobile Overlay */}
             {sidebarOpen && (
                 <div
@@ -88,11 +103,11 @@ const AdminLayout = () => {
             <aside
                 className={`
                     fixed md:sticky top-0 h-screen w-72 bg-slate-900 text-white z-30
-                    transition-transform duration-300 ease-in-out shadow-xl
+                    transition-transform duration-300 ease-in-out shadow-2xl border-l border-white/5
                     ${sidebarOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
                 `}
             >
-                <div className="p-6 flex items-center justify-between border-b border-slate-800">
+                <div className="p-6 flex items-center justify-between border-b border-white/5">
                     <div className="flex items-center gap-3">
                         <div className="bg-blue-600 p-2 rounded-xl">
                             <Shield className="w-6 h-6 text-white" />
@@ -110,7 +125,7 @@ const AdminLayout = () => {
                     </button>
                 </div>
 
-                <div className="p-4 space-y-1">
+                <div className="p-4 space-y-1 overflow-y-auto max-h-[calc(100vh-180px)]">
                     {navItems.map((item) => (
                         <NavLink
                             key={item.path}
@@ -129,21 +144,25 @@ const AdminLayout = () => {
                     ))}
                 </div>
 
-                <div className="absolute bottom-0 w-full p-4 border-t border-slate-800 bg-slate-900">
+                <div className="absolute bottom-0 w-full p-4 border-t border-white/5 bg-slate-900/80 backdrop-blur-md">
                     <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 px-4 py-3 rounded-xl w-full text-red-400 hover:bg-red-950/30 hover:text-red-300 transition-colors"
+                        onClick={handleSignOut}
+                        className="flex items-center justify-between px-6 py-4 rounded-2xl w-full text-slate-400 bg-white/5 border border-white/10 hover:bg-red-500 hover:text-white hover:border-red-600 transition-all group active:scale-95"
                     >
-                        <LogOut className="w-5 h-5" />
-                        <span>تسجيل الخروج</span>
+                        <div className="flex items-center gap-3">
+                            <LogOut className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                            <span className="font-black">خروج من السيادة</span>
+                        </div>
+                        <ChevronLeft className="w-4 h-4 rotate-180" />
                     </button>
+                    <p className="text-center text-[9px] text-slate-500 font-bold mt-3 uppercase tracking-widest opacity-30">Admin Secure Session // v3.0</p>
                 </div>
             </aside>
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0">
                 {/* Topbar */}
-                <header className="bg-white border-b border-slate-200 sticky top-0 z-10 px-6 py-4 flex items-center justify-between shadow-sm">
+                <header className="bg-black/40 backdrop-blur-xl border-b border-white/10 sticky top-0 z-10 px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button
                             onClick={() => setSidebarOpen(true)}
@@ -155,13 +174,13 @@ const AdminLayout = () => {
                         {/* Search Trigger */}
                         <div
                             onClick={() => setSearchOpen(true)}
-                            className="hidden md:flex items-center gap-3 bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl text-slate-400 cursor-text hover:border-blue-300 hover:shadow-sm transition-all w-96 group"
+                            className="hidden md:flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-2.5 rounded-xl text-white/30 cursor-text hover:border-blue-500/50 hover:bg-white/10 transition-all w-96 group"
                         >
                             <Search className="w-4 h-4 group-hover:text-blue-500" />
                             <span className="text-sm">بحث سريع...</span>
                             <div className="mr-auto flex gap-1">
-                                <kbd className="hidden sm:inline-block px-2 py-0.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-500 shadow-sm">Ctrl</kbd>
-                                <kbd className="hidden sm:inline-block px-2 py-0.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-500 shadow-sm">K</kbd>
+                                <kbd className="hidden sm:inline-block px-2 py-0.5 bg-white/10 border border-white/10 rounded-lg text-xs font-mono text-white/40 shadow-sm">Ctrl</kbd>
+                                <kbd className="hidden sm:inline-block px-2 py-0.5 bg-white/10 border border-white/10 rounded-lg text-xs font-mono text-white/40 shadow-sm">K</kbd>
                             </div>
                         </div>
                     </div>
@@ -172,7 +191,7 @@ const AdminLayout = () => {
                             <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
                         </button>
                         <div className="h-10 w-10 bg-slate-900 rounded-full flex items-center justify-center text-white font-bold shadow-lg shadow-slate-200 ring-4 ring-slate-50">
-                            AD
+                            {profile?.full_name?.charAt(0) || 'AD'}
                         </div>
                     </div>
                 </header>

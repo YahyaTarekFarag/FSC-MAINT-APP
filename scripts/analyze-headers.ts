@@ -1,4 +1,4 @@
-import { readExcelFile } from './utils/excel-reader.ts';
+import { readExcelFile } from './utils/excel-reader';
 import * as path from 'path';
 
 const files = [

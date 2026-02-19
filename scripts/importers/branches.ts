@@ -42,6 +42,13 @@ export async function importBranches(dryRun = false): Promise<void> {
 
         if (brandsError) throw brandsError;
 
+        // Fetch Sector -> Area mapping for fallback
+        const { data: sectorAreas, error: saError } = await supabase
+            .from('areas')
+            .select('id, name_ar, sector_id, sectors(name_ar)');
+
+        if (saError) throw saError;
+
         // Build lookup maps
         const areaMap = new Map<string, string>();
         areas?.forEach((a: any) => areaMap.set(a.name_ar, a.id));
@@ -49,7 +56,26 @@ export async function importBranches(dryRun = false): Promise<void> {
         const brandMap = new Map<string, string>();
         brands?.forEach((b: any) => brandMap.set(b.name_ar, b.id));
 
-        console.log(`Loaded ${areas?.length || 0} areas and ${brands?.length || 0} brands for lookup`);
+        const sectorFallbackMap = new Map<string, string>();
+        sectorAreas?.forEach((sa: any) => {
+            const sectorName = cleanArabicText(sa.sectors?.name_ar).toLowerCase();
+            if (sectorName && !sectorFallbackMap.has(sectorName)) {
+                sectorFallbackMap.set(sectorName, sa.id);
+            }
+        });
+
+        // Add specific common English to Sector/Area mappings
+        const manualMap: Record<string, string> = {
+            'delta': 'الدلتا',
+            'deltas': 'الدلتا',
+            'cairo': 'القاهرة',
+            'alex': 'الإسكندرية',
+            'upper egypt': 'الصعيد',
+            'canal': 'الدلتا والقناة',
+            'giza': 'قطاع القاهره والجيزه (السواح)'
+        };
+
+        console.log(`Loaded ${areas?.length || 0} areas, ${brands?.length || 0} brands, and ${sectorFallbackMap.size} sector fallbacks`);
 
         // Read Excel file
         const rows = readExcelFile(filePath) as BranchRow[];
@@ -60,13 +86,7 @@ export async function importBranches(dryRun = false): Promise<void> {
             console.log('Available columns:', Object.keys(rows[0]));
         }
 
-        const branches: {
-            name_ar: string;
-            area_id: string;
-            brand_id: string | null;
-            location?: string;
-            address?: string;
-        }[] = [];
+        const branches: any[] = [];
 
         const errors: { row: number; error: string }[] = [];
 
@@ -85,9 +105,23 @@ export async function importBranches(dryRun = false): Promise<void> {
                 const cleanedAreaName = validateRequired(cleanArabicText(areaName), 'Area Name');
                 const cleanedBrandName = cleanArabicText(brandName);
 
-                const areaId = areaMap.get(cleanedAreaName);
+                let areaId = areaMap.get(cleanedAreaName);
+
+                // Fallback 1: Manual Mapping (English to Arabic)
                 if (!areaId) {
-                    throw new Error(`Area not found: ${cleanedAreaName}`);
+                    const mappedName = manualMap[cleanedAreaName.toLowerCase()];
+                    if (mappedName) {
+                        areaId = areaMap.get(cleanArabicText(mappedName)) || sectorFallbackMap.get(cleanArabicText(mappedName).toLowerCase());
+                    }
+                }
+
+                // Fallback 2: Sector matching (Case insensitive)
+                if (!areaId) {
+                    areaId = sectorFallbackMap.get(cleanedAreaName.toLowerCase());
+                }
+
+                if (!areaId) {
+                    throw new Error(`Area or Sector not found: ${cleanedAreaName}`);
                 }
 
                 let brandId: string | null = null;
@@ -98,13 +132,33 @@ export async function importBranches(dryRun = false): Promise<void> {
                     }
                 }
 
-                branches.push({
+                // Fallback: If no brand found, use "بلبن" or the first available brand
+                if (!brandId) {
+                    brandId = brandMap.get('بلبن') || brandMap.get('B. Laban') || Array.from(brandMap.values())[0] || null;
+                }
+
+                if (!brandId) {
+                    throw new Error(`Critical: No brands found in database to link branch with.`);
+                }
+
+                // Default Cairo Coordinates with Jitter
+                const baseLat = 30.0444;
+                const baseLng = 31.2357;
+                const jitter = () => (Math.random() - 0.5) * 0.05;
+
+                const payload: any = {
                     name_ar: cleanedBranchName,
                     area_id: areaId,
                     brand_id: brandId,
-                    location: cleanArabicText(location) || undefined,
-                    address: cleanArabicText(address) || undefined
-                });
+                    location_lat: baseLat + jitter(),
+                    location_lng: baseLng + jitter()
+                };
+
+                if (location && typeof location === 'string' && location.includes('http')) {
+                    payload.google_map_link = location;
+                }
+
+                branches.push(payload);
 
             } catch (error) {
                 errors.push({

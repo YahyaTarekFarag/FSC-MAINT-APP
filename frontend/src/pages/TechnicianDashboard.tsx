@@ -5,11 +5,13 @@ import {
     MapPin,
     ChevronRight,
     CheckCircle2,
-    Play
+    Play,
+    Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
 import { useGeoLocation } from '../hooks/useGeoLocation';
+import { useTicketActions } from '../hooks/useTicketActions';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     branch: { name_ar: string; location_lat?: number; location_lng?: number };
@@ -17,10 +19,11 @@ type Ticket = Database['public']['Tables']['tickets']['Row'] & {
 
 export default function TechnicianDashboard({ userProfile }: { userProfile: any }) {
     const navigate = useNavigate();
+    const { updateStatus, loadingAction } = useTicketActions();
     const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
     const [todayTickets, setTodayTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(true);
-    const { getCoordinates } = useGeoLocation(); // Placeholder for future distance check
+    const { getCoordinates } = useGeoLocation();
 
     useEffect(() => {
         fetchDashboardData();
@@ -30,13 +33,14 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
         if (!userProfile?.id) return;
         setLoading(true);
         try {
+            console.log('[Sovereign Debug]: Fetching technician dashboard data');
             // 1. Get Active Ticket (In Progress)
             const { data: active } = await supabase
                 .from('tickets')
                 .select('*, branch:branches(name_ar, location_lat, location_lng)')
                 .eq('technician_id', userProfile.id)
                 .eq('status', 'in_progress')
-                .single();
+                .maybeSingle();
 
             setActiveTicket(active as any);
 
@@ -47,22 +51,31 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
                 .eq('technician_id', userProfile.id)
                 .eq('status', 'open')
                 .order('created_at', { ascending: true });
-            // Filter by date if needed, but usually just 'open' assigned to me is enough for "Today/Pending"
 
             setTodayTickets((todayList || []) as any);
 
         } catch (error) {
-            console.error('Error fetching tech dashboard:', error);
+            console.error('[Sovereign Debug]: Error fetching tech dashboard:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleStatusUpdate = async (ticketId: string, status: any) => {
+        const success = await updateStatus(ticketId, status);
+        if (success) fetchDashboardData();
     };
 
     const handleQuickAction = (ticketId: string) => {
         navigate(`/tickets/${ticketId}`);
     };
 
-    if (loading) return <div className="p-6 text-center text-slate-500">جاري تحميل بياناتك...</div>;
+    if (loading) return (
+        <div className="flex flex-col items-center justify-center p-20 space-y-4">
+            <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+            <p className="text-slate-500 font-bold">جاري تحميل بياناتك السيادية...</p>
+        </div>
+    );
 
     return (
         <div className="pb-24 space-y-6">
@@ -121,7 +134,7 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
                                     {activeTicket.branch.name_ar}
                                 </p>
 
-                                <button className="w-full bg-white text-blue-600 py-3 rounded-xl font-bold text-sm shadow-sm">
+                                <button className="w-full bg-white text-blue-600 py-3 rounded-xl font-bold text-sm shadow-sm hover:scale-[1.02] transition-transform">
                                     متابعة العمل
                                 </button>
                             </div>
@@ -148,17 +161,29 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
                             todayTickets.map(ticket => (
                                 <div
                                     key={ticket.id}
-                                    onClick={() => handleQuickAction(ticket.id)}
-                                    className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 active:bg-slate-50 transition-colors cursor-pointer"
+                                    className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between gap-4 active:bg-slate-50 transition-colors cursor-pointer"
                                 >
-                                    <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500 font-bold text-lg shrink-0">
-                                        {ticket.priority === 'critical' ? '🚨' : '🔧'}
+                                    <div className="flex items-center gap-4 flex-1 min-w-0" onClick={() => handleQuickAction(ticket.id)}>
+                                        <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500 font-bold text-lg shrink-0">
+                                            {ticket.priority === 'urgent' ? '🚨' : '🔧'}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-bold text-slate-900 truncate">{ticket.fault_category}</h4>
+                                            <p className="text-slate-500 text-sm truncate">{ticket.branch.name_ar}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-bold text-slate-900 truncate">{ticket.fault_category}</h4>
-                                        <p className="text-slate-500 text-sm truncate">{ticket.branch.name_ar}</p>
+
+                                    <div className="flex gap-2">
+                                        <button
+                                            disabled={!!loadingAction}
+                                            onClick={(e) => { e.stopPropagation(); handleStatusUpdate(ticket.id, 'in_progress'); }}
+                                            className="bg-blue-600 text-white p-2.5 rounded-xl text-xs font-bold shadow-md hover:bg-blue-700 transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                                        >
+                                            {loadingAction === ticket.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                                            بدء
+                                        </button>
+                                        <ChevronRight className="w-5 h-5 text-slate-300" />
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-slate-300" />
                                 </div>
                             ))
                         )}

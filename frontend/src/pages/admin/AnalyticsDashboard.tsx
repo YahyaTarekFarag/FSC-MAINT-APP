@@ -3,13 +3,26 @@ import { supabase } from '../../lib/supabase';
 import { useUISchema } from '../../hooks/useUISchema';
 import { SovereignChart } from '../../components/analytics/SovereignChart';
 import type { WidgetConfig } from '../../components/analytics/SovereignChart';
-import { Loader2, RefreshCw, BarChart3 } from 'lucide-react';
+import { Loader2, RefreshCw, BarChart3, Bell, Clock, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+interface TicketLog {
+    id: string;
+    status: string;
+    fault_category: string;
+    created_at: string;
+    branches?: {
+        name_ar: string;
+    };
+}
 
 export default function AnalyticsDashboard() {
     const { schema, loading: schemaLoading } = useUISchema('dashboard_analytics_v1');
-    const [widgetData, setWidgetData] = useState<Record<string, any[]>>({});
+    const [widgetData, setWidgetData] = useState<Record<string, Record<string, any>[]>>({});
     const [dataLoading, setDataLoading] = useState(true);
+    const [strategy, setStrategy] = useState<'operational' | 'financial'>('operational');
+    const [recentLogs, setRecentLogs] = useState<TicketLog[]>([]);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     const fetchData = useCallback(async () => {
         if (!schema?.widgets) return;
@@ -17,7 +30,7 @@ export default function AnalyticsDashboard() {
         setDataLoading(true);
         try {
             const widgets = schema.widgets as WidgetConfig[];
-            const dataMap: Record<string, any[]> = {};
+            const dataMap: Record<string, Record<string, any>[]> = {};
 
             // Fetch data for each unique view
             const uniqueViews = Array.from(new Set(widgets.map(w => w.view).filter((v): v is string => !!v)));
@@ -35,6 +48,15 @@ export default function AnalyticsDashboard() {
             }));
 
             setWidgetData(dataMap);
+
+            // Fetch recent tickets for live feed
+            const { data: tickets } = await supabase
+                .from('tickets')
+                .select('*, branches(name_ar)')
+                .order('created_at', { ascending: false })
+                .limit(5);
+            setRecentLogs(tickets || []);
+
         } catch (err) {
             console.error('Analytics Fetch Error:', err);
             toast.error('فشل تحميل بيانات التحليلات');
@@ -83,36 +105,117 @@ export default function AnalyticsDashboard() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <div className="px-6 py-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl">
-                        <p className="text-white/30 text-[10px] font-black uppercase tracking-widest mb-1">Last Sync</p>
-                        <p className="text-white font-mono text-sm">{new Date().toLocaleTimeString('ar-EG')}</p>
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                    <div className="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+                        <button
+                            onClick={() => setStrategy('operational')}
+                            className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${strategy === 'operational' ? 'bg-blue-600 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                        >
+                            تشغيلي
+                        </button>
+                        <button
+                            onClick={() => setStrategy('financial')}
+                            className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${strategy === 'financial' ? 'bg-blue-600 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                        >
+                            مالي
+                        </button>
                     </div>
-                    <button
-                        onClick={fetchData}
-                        className="p-5 bg-blue-600 border border-blue-400/30 rounded-2xl text-white hover:bg-blue-500 hover:shadow-[0_0_30px_rgba(37,99,235,0.3)] transition-all active:scale-95 group"
-                    >
-                        <RefreshCw className={`w-6 h-6 ${dataLoading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-                    </button>
+
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={async () => {
+                                setIsSyncing(true);
+                                try {
+                                    const { data, error } = await supabase.rpc('generate_scheduled_tickets');
+                                    if (error) throw error;
+                                    toast.success(`تم توليد ${data} بلاغ صيانة وقائية`);
+                                    fetchData();
+                                } catch {
+                                    toast.error('فشل تشغيل محرك الصيانة الوقائية');
+                                } finally {
+                                    setIsSyncing(false);
+                                }
+                            }}
+                            className="bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-400 px-4 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all active:scale-95"
+                        >
+                            <Zap className={`w-5 h-5 ${isSyncing ? 'animate-bounce' : ''}`} />
+                            <span className="hidden md:inline">تشغيل المحرك</span>
+                        </button>
+
+                        <div className="px-6 py-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl">
+                            <p className="text-white/30 text-[10px] font-black uppercase tracking-widest mb-1">Last Sync</p>
+                            <p className="text-white font-mono text-sm">{new Date().toLocaleTimeString('ar-EG')}</p>
+                        </div>
+                        <button
+                            onClick={fetchData}
+                            className="p-5 bg-blue-600 border border-blue-400/30 rounded-2xl text-white hover:bg-blue-500 hover:shadow-[0_0_30px_rgba(37,99,235,0.3)] transition-all active:scale-95 group"
+                        >
+                            <RefreshCw className={`w-6 h-6 ${dataLoading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+                        </button>
+                    </div>
                 </div>
             </header>
 
-            <div className="max-w-7xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-10">
-                    {schema?.widgets?.map((widget) => {
-                        const isKPI = widget.type === 'kpi_card';
-                        const colSpan = isKPI ? 'lg:col-span-3' : 'lg:col-span-6';
+            <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10">
+                <main className="lg:col-span-9">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-10">
+                        {schema?.widgets?.filter((w: WidgetConfig) => {
+                            if (strategy === 'financial') return w.id.includes('spending') || w.id.includes('valuation') || w.id.includes('cost');
+                            return !w.id.includes('spending') && !w.id.includes('valuation');
+                        }).map((widget: WidgetConfig) => {
+                            const isKPI = widget.type === 'kpi_card';
+                            const colSpan = isKPI ? 'lg:col-span-4' : 'lg:col-span-6';
 
-                        return (
-                            <div key={widget.id} className={`${colSpan} animate-in fade-in slide-in-from-bottom-8 duration-700`}>
-                                <SovereignChart
-                                    config={widget as WidgetConfig}
-                                    data={widgetData[widget.view || ''] || []}
-                                />
+                            return (
+                                <div key={widget.id} className={`${colSpan} animate-in fade-in slide-in-from-bottom-8 duration-700`}>
+                                    <SovereignChart
+                                        config={widget}
+                                        data={widgetData[widget.view || ''] || []}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </main>
+
+                <aside className="lg:col-span-3 space-y-8 animate-in fade-in slide-in-from-left-8 duration-1000">
+                    <div className="bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[2.5rem] p-8 h-full min-h-[600px] flex flex-col">
+                        <div className="flex items-center gap-4 mb-10">
+                            <div className="p-3 bg-emerald-500/20 rounded-xl">
+                                <Bell className="w-5 h-5 text-emerald-400" />
                             </div>
-                        );
-                    })}
-                </div>
+                            <h2 className="text-white font-black text-xl tracking-tight">البث المباشر</h2>
+                        </div>
+
+                        <div className="flex-1 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                            {recentLogs.length > 0 ? recentLogs.map((log: TicketLog) => (
+                                <div key={log.id} className="p-5 bg-white/5 border border-white/10 rounded-2xl group hover:border-blue-500/30 transition-all">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-2 h-2 rounded-full ${log.status === 'open' ? 'bg-red-500' : 'bg-blue-500'}`} />
+                                        <span className="text-white/40 text-[10px] font-black uppercase tracking-widest">{log.status}</span>
+                                    </div>
+                                    <p className="text-white text-sm font-bold leading-relaxed">
+                                        بلاع جديد في {log.branches?.name_ar || 'فرع غير معروف'}: {log.fault_category}
+                                    </p>
+                                    <div className="mt-3 flex items-center gap-2 text-white/20 text-[10px] font-black uppercase">
+                                        <Clock className="w-3 h-3" />
+                                        <span>{new Date(log.created_at).toLocaleTimeString('ar-EG')}</span>
+                                    </div>
+                                </div>
+                            )) : (
+                                <div className="text-center py-10">
+                                    <p className="text-white/20 text-xs font-bold">لا توجد أنشطة حديثة</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-8 p-4 bg-white/5 rounded-2xl border border-white/5 text-center">
+                            <p className="text-white/20 text-[10px] font-black uppercase tracking-widest leading-loose">
+                                جارى مراقبة النبض السيادي للنظام...
+                            </p>
+                        </div>
+                    </div>
+                </aside>
             </div>
 
             {/* Premium Footer Accent */}

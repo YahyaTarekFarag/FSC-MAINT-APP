@@ -13,7 +13,9 @@ import {
     Play,
     ChevronLeft,
     Square,
-    Loader2
+    Loader2,
+    Map,
+    Zap
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
@@ -43,6 +45,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
     const isAdmin = profile?.role === 'admin';
     const isTechnician = profile?.role === 'technician';
 
+    const isManager = profile?.role === 'manager';
+
     const menuItems = [
         {
             label: 'لوحة التحكم',
@@ -69,10 +73,16 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             show: isAdmin
         },
         {
+            label: 'خريطة الفروع',
+            path: '/maps',
+            icon: Map,
+            show: isAdmin || isTechnician || isManager
+        },
+        {
             label: 'بلاغاتي',
             path: '/tickets',
             icon: ClipboardList,
-            show: isTechnician || isAdmin
+            show: true
         },
         {
             label: 'إبلاغ عن عطل',
@@ -80,6 +90,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             icon: PlusCircle,
             show: true
         },
+        {
+            label: 'التقارير السيادية',
+            path: '/reports',
+            icon: ClipboardList,
+            show: isAdmin || isManager
+        },
+        {
+            label: 'الذكاء السيادي',
+            path: '/admin/intelligence',
+            icon: Zap,
+            show: isAdmin || isManager
+        }
     ];
 
     const { getCoordinates } = useGeoLocation();
@@ -207,16 +229,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
 
             if (error) throw error;
             setIsShiftActive(!isShiftActive);
-            alert(actionType === 'check_in' ? 'تم تسجيل بداية المناوبة بنجاح 🟢' : 'تم تسجيل نهاية المناوبة بنجاح 🔴');
+            toast.success(actionType === 'check_in' ? 'تم تسجيل بداية المناوبة بنجاح 🟢' : 'تم تسجيل نهاية المناوبة بنجاح 🔴', {
+                style: {
+                    background: '#10b981',
+                    color: '#fff',
+                    fontWeight: 'bold',
+                    borderRadius: '1rem',
+                },
+                icon: actionType === 'check_in' ? '🟢' : '🔴'
+            });
         } catch (err: any) {
-            alert('فشل في تسجيل البصمة: ' + (err.message || err));
+            toast.error('فشل في تسجيل البصمة: ' + (err.message || err));
         } finally {
             setShiftLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex font-sans rtl" dir="rtl">
+        <div className="min-h-screen bg-transparent flex font-sans rtl" dir="rtl">
             {/* Sidebar Overlay (Mobile) */}
             {isSidebarOpen && (
                 <div
@@ -227,19 +257,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
 
             {/* Sidebar - Hidden on mobile if technician (uses bottom nav) */}
             <aside className={`
-                fixed inset-y-0 right-0 w-72 bg-white border-l border-slate-200 z-50 transform transition-transform duration-300 ease-in-out
+                fixed inset-y-0 right-0 w-72 bg-slate-900/80 backdrop-blur-2xl border-l border-white/10 z-50 transform transition-transform duration-300 ease-in-out
                 lg:translate-x-0 lg:static lg:inset-0
                 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
                 ${isTechnician ? 'hidden lg:block' : ''}
             `}>
                 <div className="h-full flex flex-col">
                     {/* Sidebar Header */}
-                    <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                    <div className="p-6 border-b border-white/5 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-200">
+                            <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
                                 <ClipboardList className="w-6 h-6 text-white" />
                             </div>
-                            <span className="text-xl font-bold text-slate-900">نظام الصيانة</span>
+                            <span className="text-xl font-bold text-white">نظام الصيانة</span>
                         </div>
                         <button
                             className="lg:hidden p-2 text-slate-400 hover:text-slate-600 transition-colors"
@@ -259,8 +289,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                                 className={({ isActive }) => `
                   flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all group
                   ${isActive
-                                        ? 'bg-blue-50 text-blue-600 shadow-sm'
-                                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}
+                                        ? 'bg-blue-600/20 text-blue-400 shadow-sm border border-blue-500/20'
+                                        : 'text-slate-400 hover:bg-white/5 hover:text-white'}
                 `}
                             >
                                 <item.icon className={`w-5 h-5 transition-colors`} />
@@ -271,19 +301,39 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                     </nav>
 
                     {/* Sidebar Footer */}
-                    <div className="p-4 border-t border-slate-100 space-y-2">
-                        <div className="bg-slate-50 p-4 rounded-2xl mb-4">
-                            <p className="text-xs text-slate-400 font-bold mb-1 uppercase tracking-wider">الدعم الفني</p>
-                            <p className="text-sm text-slate-600">هل تواجه مشكلة؟</p>
-                            <button className="text-blue-600 font-bold text-sm mt-1 hover:underline">اتصل بنا</button>
+                    <div className="p-4 mt-auto border-t border-white/5 space-y-4 bg-white/5">
+                        {/* Interactive Entity Contact */}
+                        <div className="bg-white/40 backdrop-blur-xl p-5 rounded-[2rem] border border-white relative overflow-hidden group shadow-sm">
+                            <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-transparent"></div>
+                            <div className="relative z-10">
+                                <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest mb-1 leading-none">الدعم السيادي</p>
+                                <p className="text-sm text-slate-800 font-black">هل تواجه مشكلة تقنية؟</p>
+                                <button
+                                    onClick={() => window.open('https://wa.me/201201103604?text=طلب دعم فني - نظام الصيانة السيادي', '_blank')}
+                                    className="text-blue-600 font-black text-xs mt-3 flex items-center gap-2 hover:translate-x-1 transition-transform bg-blue-50/50 px-3 py-1.5 rounded-full w-fit border border-blue-100/50"
+                                >
+                                    فتح محادثة واتساب
+                                    <ChevronLeft className="w-3 h-3 rotate-180" />
+                                </button>
+                            </div>
                         </div>
-                        <button
-                            onClick={handleSignOut}
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-red-500 hover:bg-red-50 transition-all"
-                        >
-                            <LogOut className="w-5 h-5" />
-                            <span>تسجيل الخروج</span>
-                        </button>
+
+                        {/* High-Visibility Logout */}
+                        <div className="pt-2">
+                            <button
+                                onClick={handleSignOut}
+                                className="w-full flex items-center justify-between px-6 py-4 rounded-2xl font-black text-slate-400 bg-white border border-slate-100 hover:bg-red-500 hover:text-white hover:border-red-600 hover:shadow-xl hover:shadow-red-500/20 transition-all duration-300 group active:scale-95"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-white/5 rounded-lg group-hover:bg-red-400 group-hover:text-white transition-colors">
+                                        <LogOut className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                                    </div>
+                                    <span className="text-sm">خروج آمن من النظام</span>
+                                </div>
+                                <ChevronLeft className="w-4 h-4 rotate-180 opacity-0 group-hover:opacity-100 transition-all" />
+                            </button>
+                            <p className="text-center text-[9px] text-slate-400 font-bold mt-3 uppercase tracking-widest opacity-50">Sovereign OS v3.0 // Secure Session</p>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -291,7 +341,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* Header */}
-                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30">
+                <header className="h-16 bg-black/40 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30">
                     <button
                         className={`lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors ${isTechnician ? 'hidden' : ''}`}
                         onClick={() => setIsSidebarOpen(true)}
@@ -323,9 +373,9 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                         </button>
 
                         <div className="hidden sm:flex flex-col items-start rtl:items-end">
-                            <span className="text-sm font-bold text-slate-900">{profile?.full_name}</span>
+                            <span className="text-sm font-bold text-white">{profile?.full_name}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize
-                  ${isAdmin ? 'bg-purple-50 text-purple-600 border border-purple-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}
+                  ${isAdmin ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}
                 `}>
                                 {profile?.role === 'admin' ? 'مدير نظام' : profile?.role === 'manager' ? 'مدير قطاع' : 'فني صيانة'}
                             </span>
@@ -340,7 +390,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-y-auto bg-slate-50 pb-20 lg:pb-0">
+                <main className="flex-1 overflow-y-auto bg-transparent pb-20 lg:pb-0">
                     {/* Added padding bottom for mobile nav space */}
                     <AnimatePresence mode="wait">
                         <PageTransition key={location.pathname} className="p-4 lg:p-8 min-h-full">

@@ -10,6 +10,7 @@ import ReloadPrompt from './components/common/ReloadPrompt';
 import { Toaster } from 'react-hot-toast';
 import { useLocationSync } from './hooks/useLocationSync';
 import { SystemSettingsProvider } from './contexts/SystemSettingsContext';
+import { NotificationEngine } from './utils/NotificationEngine';
 
 // Eager Components (Core)
 import Login from './pages/Login';
@@ -18,6 +19,7 @@ import DashboardHome from './pages/dashboard/DashboardHome';
 import NewTicket from './pages/tickets/NewTicket';
 import TicketList from './pages/tickets/TicketList';
 import TicketDetails from './pages/tickets/TicketDetails';
+import NotFound from './pages/NotFound';
 
 // Lazy Components (Admin & Heavy Modules)
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
@@ -25,7 +27,7 @@ const TechnicianLayout = lazy(() => import('./layouts/TechnicianLayout'));
 const DashboardAnalytics = lazy(() => import('./pages/admin/AnalyticsDashboard'));
 const AdminConsole = lazy(() => import('./pages/admin/AdminConsole'));
 const SystemSettings = lazy(() => import('./pages/admin/settings/SystemSettings'));
-const BranchList = lazy(() => import('./pages/admin/branches/BranchList'));
+const BranchList = lazy(() => import('./pages/admin/branches/BranchesManagement'));
 const StaffList = lazy(() => import('./pages/admin/staff/StaffList'));
 const FormBuilder = lazy(() => import('./pages/admin/settings/FormBuilder'));
 const InventoryList = lazy(() => import('./pages/admin/inventory/InventoryList'));
@@ -45,7 +47,9 @@ const TechnicianMap = lazy(() => import('./pages/admin/users/TechnicianMap'));
 const MaintenanceScheduler = lazy(() => import('./pages/admin/MaintenanceScheduler'));
 const AssetDetails = lazy(() => import('./pages/admin/assets/AssetDetails'));
 const CategoriesManager = lazy(() => import('./pages/admin/settings/CategoriesManager'));
+const BranchMaps = lazy(() => import('./pages/BranchMaps'));
 const FormManager = lazy(() => import('./pages/admin/forms/FormManager'));
+const SovereignIntelligence = lazy(() => import('./pages/admin/SovereignIntelligence'));
 
 // Technician Experience
 const TechnicianDashboard = lazy(() => import('./pages/TechnicianDashboard'));
@@ -78,6 +82,9 @@ function App() {
   };
 
   useEffect(() => {
+    // Sync notifications templates once
+    NotificationEngine.syncTemplates();
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) fetchProfile(session.user.id);
@@ -145,7 +152,8 @@ function App() {
                 } />
 
                 <Route path="tickets/new" element={<NewTicket userProfile={profile} />} />
-                <Route path="tickets" element={<TicketList />} />
+                <Route path="tickets" element={<TicketList userProfile={profile} />} />
+                <Route path="maps" element={<BranchMaps />} />
 
                 {/* Conditional Routing for Ticket Details */}
                 <Route path="tickets/:id" element={
@@ -157,10 +165,10 @@ function App() {
 
                 {/* Admin Routes (Wrapped in AdminLayout) */}
                 {profile?.role === 'admin' && (
-                  <Route path="admin" element={<AdminLayout />}>
+                  <Route path="admin" element={<AdminLayout profile={profile} handleSignOut={handleSignOut} />}>
                     <Route path="dashboard" element={<DashboardAnalytics />} />
                     <Route path="console" element={<AdminConsole />} />
-                    <Route path="tickets" element={<TicketList />} />
+                    <Route path="tickets" element={<TicketList userProfile={profile} />} />
                     <Route path="workforce/roster" element={<TechRoster />} />
                     <Route path="workforce/assignments" element={<AssignmentManager />} />
                     <Route path="map" element={<TechnicianMap />} />
@@ -171,6 +179,7 @@ function App() {
                     <Route path="structure" element={<OrganizationManager />} />
                     <Route path="users" element={<UserManager />} />
                     <Route path="analytics" element={<DashboardAnalytics />} />
+                    <Route path="intelligence" element={<SovereignIntelligence />} />
                     <Route path="logs" element={<AuditLogs />} />
                     <Route path="settings/master-data" element={<MasterDataManager />} />
                     <Route path="settings/categories" element={<CategoriesManager />} />
@@ -201,7 +210,7 @@ function App() {
               </Route>
 
               {/* Fallback */}
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
         </ErrorBoundary>

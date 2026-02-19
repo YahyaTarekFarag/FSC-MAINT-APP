@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { calculateDistance } from '../../utils/helpers';
 import {
     AlertTriangle,
@@ -8,11 +8,15 @@ import {
     X,
     Loader2,
     CheckCircle2,
-    MapPin
+    MapPin,
+    Building2,
+    Box,
+    MessageCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
 import { uploadTicketImage } from '../../lib/storage';
+import { NotificationEngine } from '../../utils/NotificationEngine';
 import DynamicForm from '../../components/tickets/DynamicForm';
 import type { Database } from '../../lib/supabase';
 import { useFormConfig } from '../../hooks/useFormConfig';
@@ -67,7 +71,15 @@ const LocationMarker = ({ setLocation, setLocationError }: { setLocation: (loc: 
 
 const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
     const navigate = useNavigate();
-    const { shouldShow, getLabel, isRequired } = useFormConfig('new_ticket');
+    const [searchParams] = useSearchParams();
+    const { fields, shouldShow, getLabel, isRequired } = useFormConfig('new_ticket');
+
+    const assetIdFromUrl = searchParams.get('asset_id');
+
+    // [Sovereign Debug] Trace data flow as requested
+    useEffect(() => {
+        console.log('[Sovereign Debug] Schema State (Form Fields):', fields);
+    }, [fields]);
 
     const [loading, setLoading] = useState(false);
     const [fetchingBranches, setFetchingBranches] = useState(false);
@@ -86,7 +98,7 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
         branch_id: '',
         asset_id: '',
         fault_category: '',
-        priority: 'medium' as 'low' | 'medium' | 'high' | 'urgent',
+        priority: 'medium' as 'low' | 'medium' | 'high' | 'critical',
         description: ''
     });
 
@@ -95,21 +107,63 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
     const [formResponses, setFormResponses] = useState<Record<string, any>>({});
     const [file, setFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [submittedTicket, setSubmittedTicket] = useState<any>(null); // To show success view
 
     // Geofencing Logic
     const [distanceToBranch, setDistanceToBranch] = useState<number | null>(null);
     const [geofenceValid, setGeofenceValid] = useState(true); // Default true until checked
     const geofencingEnabled = userProfile?.role === 'technician'; // Example rule, or fetch from settings
 
+    const handleAssetPreFill = useCallback(async (id: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('maintenance_assets')
+                .select('*, branches(id, location_lat, location_lng)')
+                .eq('id', id)
+                .single();
+
+            const asset = data as any;
+            if (asset && !error) {
+                setForm(prev => ({
+                    ...prev,
+                    asset_id: asset.id,
+                    branch_id: asset.branch_id
+                }));
+                // We cast to any here to satisfy the geofence check since the join result shape is dynamic
+                if (asset.branches) checkGeofenceWithBranch(asset.branches);
+            }
+        } catch (err) {
+            console.error('Failed to pre-fill asset:', err);
+        }
+    }, [geofencingEnabled, location]);
+
+    const checkGeofenceWithBranch = (branch: any) => {
+        if (!geofencingEnabled || !location) return;
+        if (branch.location_lat && branch.location_lng) {
+            const dist = calculateDistance(
+                location.lat,
+                location.lng,
+                Number(branch.location_lat),
+                Number(branch.location_lng)
+            );
+            setDistanceToBranch(Math.round(dist));
+            setGeofenceValid(dist <= 200);
+        }
+    };
+
     useEffect(() => {
         setTimeout(() => setMapReady(true), 500);
         fetchBranches();
         fetchCategories();
-    }, []);
+
+        if (assetIdFromUrl) {
+            handleAssetPreFill(assetIdFromUrl);
+        }
+    }, [assetIdFromUrl, handleAssetPreFill]);
 
     useEffect(() => {
         if (userProfile?.branch_id && branches.length > 0) {
-            setForm(prev => ({ ...prev, branch_id: userProfile.branch_id! }));
+            setForm(prev => ({ ...prev, branch_id: userProfile.branch_id as string }));
         }
     }, [userProfile, branches]);
 
@@ -218,21 +272,25 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
             const { data: ticket, error } = await (supabase.from('tickets') as any).insert({
                 branch_id: form.branch_id,
                 asset_id: form.asset_id || null,
-                category: form.fault_category,
+                fault_category: form.fault_category,
                 priority: form.priority,
                 description: form.description,
                 status: 'open',
-                created_by: userProfile?.id,
                 location_lat: location?.lat,
                 location_lng: location?.lng,
                 images_url: imageUrl ? [imageUrl] : [],
-                form_data: dynamicData, // Store legacy dynamic form data here
-                source: 'web'
+                form_data: dynamicData
             })
                 .select()
                 .single();
 
-            if (error) throw error;
+            if (error) {
+                console.error('[Sovereign Debug] Submission Failed:', error);
+                if (error.message) console.error('Message:', error.message);
+                if (error.details) console.error('Details:', error.details);
+                if (error.hint) console.error('Hint:', error.hint);
+                throw error;
+            }
             if (!ticket) throw new Error('فشل إنشاء التذكرة');
 
             // 5. Save Form Responses (Phase 61)
@@ -250,10 +308,13 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
             }
 
             toast.success('تم إرسال البلاغ بنجاح');
-            navigate('/dashboard');
+            setSubmittedTicket(ticket);
+            // Don't navigate automatically, show success screen
+            // navigate('/dashboard');
         } catch (error) {
-            console.error('Error submitting ticket:', error);
-            toast.error('حدث خطأ أثناء إرسال البلاغ');
+            console.error('[Sovereign Debug] Submission Error:', error);
+            const errorMessage = (error as any)?.message || 'حدث خطأ أثناء إرسال البلاغ';
+            toast.error(`فشل الإرسال: ${errorMessage}`);
         } finally {
             setLoading(false);
         }
@@ -263,8 +324,52 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
         { value: 'low', label: 'منخفضة', color: 'slate' },
         { value: 'medium', label: 'متوسطة', color: 'blue' },
         { value: 'high', label: 'عالية', color: 'orange' },
-        { value: 'urgent', label: 'طارئة', color: 'red' }
+        { value: 'critical', label: 'طارئة', color: 'red' }
     ];
+
+    if (submittedTicket) {
+        return (
+            <div className="max-w-xl mx-auto py-20 animate-in zoom-in duration-500 text-center space-y-8">
+                <div className="bg-emerald-500/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto border-4 border-emerald-500/20">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-500" />
+                </div>
+                <div className="space-y-2">
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight text-right">تم تسجيل البلاغ بنجاح!</h1>
+                    <p className="text-slate-500 font-medium text-right">رقم البلاغ السيادي: <span className="text-blue-600 font-mono">#{submittedTicket.id.slice(0, 8)}</span></p>
+                </div>
+
+                <div className="bg-white border border-slate-100 rounded-[2rem] p-8 shadow-xl shadow-slate-200/50 space-y-6">
+                    <p className="text-sm text-slate-400 font-bold mb-4">هل ترغب في تنبيه الفرع فوراً؟</p>
+                    <button
+                        onClick={() => {
+                            const branch = branches.find(b => b.id === submittedTicket.branch_id);
+                            if (branch?.phone) {
+                                NotificationEngine.openWhatsApp(branch.phone, 'new_ticket', {
+                                    name: branch.name_ar,
+                                    ticket_id: submittedTicket.id.slice(0, 8),
+                                    branch: branch.name_ar,
+                                    issue: submittedTicket.fault_category
+                                });
+                            } else {
+                                toast.error('رقم هاتف الفرع غير مسجل');
+                            }
+                        }}
+                        className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-4 rounded-2xl font-black shadow-lg shadow-green-200 flex items-center justify-center gap-3 transition-all active:scale-95"
+                    >
+                        <MessageCircle className="w-6 h-6" />
+                        إرسال تنبيه عبر واتساب
+                    </button>
+
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-4 rounded-2xl font-bold transition-all"
+                    >
+                        العودة للرئيسية
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -476,7 +581,7 @@ const NewTicket: React.FC<NewTicketProps> = ({ userProfile }) => {
                                     <button
                                         key={p.value}
                                         type="button"
-                                        onClick={() => setForm({ ...form, priority: p.value as 'low' | 'medium' | 'high' | 'urgent' })}
+                                        onClick={() => setForm({ ...form, priority: p.value as 'low' | 'medium' | 'high' | 'critical' })}
                                         className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all
                                             ${form.priority === p.value
                                                 ? `bg-${p.color}-50 border-${p.color}-500 text-${p.color}-700 ring-1 ring-${p.color}-500`

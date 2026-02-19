@@ -1,17 +1,23 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
-    ClipboardList,
     Search,
     Filter,
-    Plus,
-    Loader2
+    Plus
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { SovereignTable } from '../../components/tickets/SovereignTable';
 import toast from 'react-hot-toast';
+import { NotificationEngine } from '../../utils/NotificationEngine';
+import type { Database } from '../../lib/supabase';
 
-export default function TicketList() {
+type Profile = Database['public']['Tables']['profiles']['Row'];
+
+interface TicketListProps {
+    userProfile?: Profile | null;
+}
+
+export default function TicketList({ userProfile }: TicketListProps) {
     const navigate = useNavigate();
     const [tickets, setTickets] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -23,7 +29,7 @@ export default function TicketList() {
         try {
             let query = supabase
                 .from('tickets')
-                .select('*, branch:branches(name_ar)');
+                .select('*, branch:branches(name_ar, phone)');
 
             if (filterStatus !== 'all') {
                 query = query.eq('status', filterStatus);
@@ -31,6 +37,13 @@ export default function TicketList() {
 
             if (searchQuery) {
                 query = query.or(`description.ilike.%${searchQuery}%,fault_category.ilike.%${searchQuery}%`);
+            }
+
+            // RBAC Filtering
+            if (userProfile?.role === 'manager' && userProfile.branch_id) {
+                query = query.eq('branch_id', userProfile.branch_id);
+            } else if (userProfile?.role === 'technician') {
+                query = query.eq('technician_id', userProfile.id);
             }
 
             const { data, error } = await query.order('created_at', { ascending: false });
@@ -43,15 +56,30 @@ export default function TicketList() {
         } finally {
             setLoading(false);
         }
-    }, [filterStatus, searchQuery]);
+    }, [filterStatus, searchQuery, userProfile?.branch_id, userProfile?.id, userProfile?.role]);
 
     useEffect(() => {
         fetchTickets();
     }, [fetchTickets]);
 
-    const handleAction = (action: string, item: any) => {
+    const handleAction = async (action: string, item: any) => {
         if (action === 'view') navigate(`/tickets/${item.id}`);
-        // Handle other actions
+        if (action === 'whatsapp') {
+            const phone = item.branch.phone;
+            if (!phone) {
+                toast.error('لا يوجد رقم هاتف لهذا الفرع');
+                return;
+            }
+
+            const data = {
+                name: item.branch.name_ar,
+                ticket_id: item.id.slice(0, 8),
+                branch: item.branch.name_ar,
+                issue: item.fault_category
+            };
+
+            await NotificationEngine.openWhatsApp(phone, 'new_ticket', data);
+        }
     };
 
     return (
