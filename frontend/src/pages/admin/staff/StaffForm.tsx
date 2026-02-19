@@ -6,7 +6,8 @@ import {
     ShieldCheck,
     ChevronDown,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Cpu,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import type { Database } from '../../../lib/supabase';
@@ -14,6 +15,7 @@ import type { Database } from '../../../lib/supabase';
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Sector = Database['public']['Tables']['sectors']['Row'];
 type Area = Database['public']['Tables']['areas']['Row'];
+type Skill = Database['public']['Tables']['technician_skills']['Row'];
 
 interface StaffFormProps {
     profile: Profile;
@@ -27,6 +29,8 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
 
     const [sectors, setSectors] = useState<Sector[]>([]);
     const [areas, setAreas] = useState<Area[]>([]);
+    const [allSkills, setAllSkills] = useState<Skill[]>([]);
+    const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
     const [formData, setFormData] = useState({
         full_name: profile.full_name || '',
@@ -42,16 +46,21 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
 
     const fetchMetadata = async () => {
         try {
-            const [sectorsRes, areasRes] = await Promise.all([
+            const [sectorsRes, areasRes, skillsRes, profileSkillsRes] = await Promise.all([
                 supabase.from('sectors').select('*').order('name_ar'),
-                supabase.from('areas').select('*').order('name_ar')
+                supabase.from('areas').select('*').order('name_ar'),
+                (supabase.from('technician_skills') as any).select('*').order('name'),
+                (supabase.from('profile_skills') as any).select('skill_id').eq('profile_id', profile.id)
             ]);
 
             if (sectorsRes.error) throw sectorsRes.error;
             if (areasRes.error) throw areasRes.error;
+            if (skillsRes.error) throw skillsRes.error;
 
             setSectors(sectorsRes.data || []);
             setAreas(areasRes.data || []);
+            setAllSkills(skillsRes.data || []);
+            setSelectedSkills((profileSkillsRes.data || []).map((ps: any) => ps.skill_id));
         } catch (err) {
             console.error('Error fetching metadata:', err);
         } finally {
@@ -64,13 +73,14 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
         setLoading(true);
 
         try {
+            const userRole = formData.role?.toLowerCase();
             const updateData: Partial<Profile> = {
                 full_name: formData.full_name,
                 role: formData.role,
                 specialization: formData.specialization,
                 // Reset irrelevant assignments based on role
-                assigned_sector_id: formData.role === 'manager' ? formData.assigned_sector_id : null,
-                assigned_area_id: formData.role === 'technician' ? formData.assigned_area_id : null
+                assigned_sector_id: userRole === 'manager' ? formData.assigned_sector_id : null,
+                assigned_area_id: userRole === 'technician' ? formData.assigned_area_id : null
             };
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,6 +90,25 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
                 .eq('id', profile.id);
 
             if (error) throw error;
+
+            // Sync Skills
+            // 1. Delete removed
+            await (supabase.from('profile_skills') as any).delete().eq('profile_id', profile.id);
+            // 2. Insert new
+            if (selectedSkills.length > 0) {
+                const skillInserts = selectedSkills.map(sid => ({
+                    profile_id: profile.id,
+                    skill_id: sid,
+                    proficiency_level: 3
+                }));
+                await (supabase.from('profile_skills') as any).insert(skillInserts);
+            }
+            // 3. Re-fetch skills to update state after sync
+            const profileSkillsRes = await supabase.from('profile_skills').select('*').eq('profile_id', profile.id);
+            if (!profileSkillsRes.error && profileSkillsRes.data) {
+                setSelectedSkills(profileSkillsRes.data.map((ps: any) => ps.skill_id));
+            }
+
             onSuccess();
         } catch (err: unknown) {
             console.error('Error updating profile:', err);
@@ -207,6 +236,38 @@ const StaffForm: React.FC<StaffFormProps> = ({ profile, onClose, onSuccess }) =>
                         <p className="text-xs font-bold leading-relaxed">
                             بصفته مسؤول نظام (Admin)، يتمتع هذا المستخدم بصلاحيات وصول شاملة لجميع القطاعات والفروع دون الحاجة لتوجيه جغرافي محدد.
                         </p>
+                    </div>
+                )}
+
+                {/* Skill Matrix (Only for Technicians) */}
+                {formData.role === 'technician' && (
+                    <div className="space-y-4 pt-4 border-t border-slate-100 animate-in slide-in-from-top-2 duration-500">
+                        <label className="text-sm font-bold text-slate-700 block flex items-center gap-2">
+                            <Cpu className="w-4 h-4 text-blue-600" />
+                            مصفوفة المهارات (Skill Matrix)
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            {allSkills.map(skill => (
+                                <button
+                                    key={skill.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedSkills(prev =>
+                                            prev.includes(skill.id)
+                                                ? prev.filter(id => id !== skill.id)
+                                                : [...prev, skill.id]
+                                        );
+                                    }}
+                                    className={`px-4 py-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-between ${selectedSkills.includes(skill.id)
+                                        ? 'bg-blue-600 text-white border-blue-700 shadow-md'
+                                        : 'bg-white text-slate-500 border-slate-200 hover:border-blue-400'
+                                        }`}
+                                >
+                                    {skill.name}
+                                    {selectedSkills.includes(skill.id) && <CheckCircle2 className="w-4 h-4" />}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
 

@@ -8,8 +8,6 @@ export const useLocationSync = (userProfile: Profile | null) => {
     useEffect(() => {
         if (!userProfile || userProfile.role !== 'technician') return;
 
-        console.log('Initializing Location Sync for Technician:', userProfile.full_name);
-
         const updateLocation = async (position: GeolocationPosition) => {
             const { latitude, longitude } = position.coords;
             try {
@@ -22,12 +20,12 @@ export const useLocationSync = (userProfile: Profile | null) => {
                     })
                     .eq('id', userProfile.id);
             } catch (error) {
-                console.error('Error syncing location:', error);
+                // Silent fail for background sync
             }
         };
 
         const handleError = (error: GeolocationPositionError) => {
-            console.warn('Location sync error:', error.message);
+            // Permission denied or silent error
         };
 
         // Options: High accuracy, check every 30 seconds max (prevent spam), timeout 10s

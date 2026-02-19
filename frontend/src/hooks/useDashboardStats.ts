@@ -40,7 +40,7 @@ export const useDashboardStats = (userProfile: Profile | null): DashboardStats =
         error: null
     });
 
-    const fetchStats = useCallback(async () => {
+    const fetchStats = useCallback(async (signal?: AbortSignal) => {
         if (!userProfile) {
             setStats(prev => ({ ...prev, loading: false }));
             return;
@@ -60,13 +60,51 @@ export const useDashboardStats = (userProfile: Profile | null): DashboardStats =
           )
         `);
 
+            // Attach signal if possible (Supabase JS might not fully support it in all versions, 
+            // but we use it for our internal state guard)
+            if (signal?.aborted) return;
+
             // Role-based filtering
-            if (userProfile.role === 'technician' && userProfile.assigned_area_id) {
-                query = query.eq('branch.area_id', userProfile.assigned_area_id);
+            const userRole = userProfile.role?.toLowerCase();
+
+            if (userRole === 'technician') {
+                // If technician has an assigned area, filter by that area's branches
+                if (userProfile.assigned_area_id) {
+                    query = query.eq('branch.area_id', userProfile.assigned_area_id);
+                } else {
+                    // Fallback: If no area assigned, perhaps filter by assigned technician field if it exists
+                    // query = query.eq('technician_id', userProfile.id);
+                }
+            } else if (userRole === 'manager') {
+                if (userProfile.branch_id) {
+                    query = query.eq('branch_id', userProfile.branch_id);
+                }
             }
+            // Admins see everything (no filter)
 
             const { data: tickets, error } = await query;
-            if (error) throw error;
+
+            if (signal?.aborted) return;
+            if (error) {
+                console.error(`[Dashboard Statistics] Query Error for role ${userRole}:`, error);
+                throw error;
+            }
+
+            if (!tickets || tickets.length === 0) {
+                console.warn(`[Dashboard Statistics] No tickets found for user ${userProfile.id} (Role: ${userRole})`);
+                setStats({
+                    total: 0,
+                    open: 0,
+                    emergency: 0,
+                    closedToday: 0,
+                    statusDistribution: [],
+                    categoryDistribution: [],
+                    recentTickets: [],
+                    loading: false,
+                    error: null
+                });
+                return;
+            }
 
             const allTickets = (tickets as unknown) as TicketWithBranch[];
 
@@ -105,26 +143,31 @@ export const useDashboardStats = (userProfile: Profile | null): DashboardStats =
                 .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                 .slice(0, 5);
 
-            setStats({
-                total,
-                open,
-                emergency,
-                closedToday,
-                statusDistribution,
-                categoryDistribution,
-                recentTickets,
-                loading: false,
-                error: null
-            });
+            if (!signal?.aborted) {
+                setStats({
+                    total,
+                    open,
+                    emergency,
+                    closedToday,
+                    statusDistribution,
+                    categoryDistribution,
+                    recentTickets,
+                    loading: false,
+                    error: null
+                });
+            }
 
         } catch (err: any) {
+            if (signal?.aborted) return;
             console.error('Error fetching dashboard stats:', err);
             setStats(prev => ({ ...prev, loading: false, error: err.message }));
         }
     }, [userProfile]);
 
     useEffect(() => {
-        fetchStats();
+        const controller = new AbortController();
+        fetchStats(controller.signal);
+        return () => controller.abort();
     }, [fetchStats]);
 
     return stats;

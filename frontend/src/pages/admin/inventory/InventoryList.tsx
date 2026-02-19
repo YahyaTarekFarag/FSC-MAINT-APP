@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Package, TrendingUp, Upload, Download, ArrowRight, Archive, ArchiveRestore, Loader2 } from 'lucide-react';
+import { Package, Upload, Download, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SovereignTable } from '../../../components/tickets/SovereignTable';
 import { SovereignActionModal } from '../../../components/ui/SovereignActionModal';
 import { useSovereignMutation } from '../../../hooks/useSovereignMutation';
 import { useSovereignQuery } from '../../../hooks/useSovereignQuery';
+import { useSovereignSchema } from '../../../hooks/useSovereignSchema';
 import { supabase } from '../../../lib/supabase';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -14,23 +15,19 @@ const InventoryList = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [modalAction, setModalAction] = useState<'add' | 'edit'>('add');
-    const [showArchived, setShowArchived] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Restock Modal State
-    const [showRestockModal, setShowRestockModal] = useState(false);
-    const [restockAmount, setRestockAmount] = useState<number>(1);
-    const [submitting, setSubmitting] = useState(false);
+    const { schema, loading: schemaLoading } = useSovereignSchema('inventory_management_v1');
 
     const { data: parts, loading, refetch } = useSovereignQuery({
-        table: 'spare_parts',
-        showArchived,
-        orderBy: { column: 'name_ar', ascending: true },
+        table: 'inventory',
+        showArchived: false,
+        orderBy: { column: 'part_name', ascending: true },
         search: searchTerm,
-        searchColumns: ['name_ar', 'part_number']
+        searchColumns: ['part_name', 'sku']
     });
 
-    const { createRecord, updateRecord, softDeleteRecord, restoreRecord } = useSovereignMutation({ table_name: 'spare_parts' });
+    const { softDeleteRecord, restoreRecord } = useSovereignMutation({ table_name: 'inventory' });
 
     const handleAction = async (action: string, item: any) => {
         if (action === 'add') {
@@ -41,11 +38,8 @@ const InventoryList = () => {
             setSelectedItem(item);
             setModalAction('edit');
             setIsModalOpen(true);
-        } else if (action === 'restock') {
-            setSelectedItem(item);
-            setShowRestockModal(true);
         } else if (action === 'delete') {
-            if (window.confirm(`هل أنت متأكد من أرشفة القطعة: ${item.name_ar}؟`)) {
+            if (window.confirm(`هل أنت متأكد من إيقاف القطعة: ${item.part_name}؟`)) {
                 const { error } = await softDeleteRecord(item.id);
                 if (!error) refetch();
             }
@@ -55,76 +49,13 @@ const InventoryList = () => {
         }
     };
 
-    const handleBatchAction = async (action: string, ids: string[]) => {
-        if (action === 'archive') {
-            if (window.confirm(`هل أنت متأكد من أرشفة ${ids.length} سجل؟`)) {
-                const promises = ids.map(id => softDeleteRecord(id));
-                await Promise.all(promises);
-                toast.success('تمت الأرشفة الجماعية بنجاح');
-                refetch();
-            }
-        }
-    };
-
-    const handleModalComplete = async (formData: any) => {
-        let result;
-        if (modalAction === 'add') {
-            result = await createRecord(formData);
-        } else {
-            result = await updateRecord(selectedItem.id, formData);
-        }
-
-        if (result && !result.error) {
-            setIsModalOpen(false);
-            refetch();
-        }
-    };
-
-    const handleRestock = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedItem || restockAmount <= 0) return;
-
-        setSubmitting(true);
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
-
-            const { error: transactionError } = await (supabase
-                .from('inventory_transactions') as any)
-                .insert({
-                    part_id: Number(selectedItem.id),
-                    user_id: user.id,
-                    change_amount: restockAmount,
-                    transaction_type: 'restock',
-                    notes: 'إعادة تعبئة سيادية'
-                });
-
-            if (transactionError) throw transactionError;
-
-            toast.success('تمت إعادة التعبئة بنجاح');
-            refetch();
-            setShowRestockModal(false);
-            setSelectedItem(null);
-            setRestockAmount(1);
-        } catch (err) {
-            console.error('Error restocking:', err);
-            toast.error('فشل في إعادة التخزين');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
     const handleExport = () => {
         const dataToExport = parts.map(p => ({
-            'الاسم': p.name_ar,
-            'رقم القطعة': p.part_number,
+            'الاسم': p.part_name,
+            'SKU': p.sku,
             'الكمية': p.quantity,
-            'الحد الأدنى': p.min_threshold,
             'السعر': p.price,
-            'الموقع': p.location,
-            'المورد': p.supplier,
-            'الوصف': p.description,
-            'موديلات': p.compatible_models
+            'الحالة': p.is_active ? 'نشط' : 'متوقف'
         }));
 
         const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -147,18 +78,14 @@ const InventoryList = () => {
             let successCount = 0;
             for (const row of jsonData) {
                 const partData = {
-                    name_ar: row['الاسم'] || row['name_ar'],
-                    part_number: row['رقم القطعة'] || row['part_number'],
+                    part_name: row['الاسم'] || row['part_name'],
+                    sku: row['SKU'] || row['sku'],
                     quantity: parseInt(row['الكمية'] || row['quantity'] || '0'),
-                    min_threshold: parseInt(row['الحد الأدنى'] || row['min_threshold'] || '5'),
                     price: parseFloat(row['السعر'] || row['price'] || '0'),
-                    location: row['الموقع'] || row['location'],
-                    supplier: row['المورد'] || row['supplier'],
-                    description: row['الوصف'] || row['description'],
-                    compatible_models: row['موديلات'] || row['compatible_models'],
+                    is_active: true
                 };
 
-                const { error } = await supabase.from('spare_parts').upsert(partData as any, { onConflict: 'part_number' });
+                const { error } = await supabase.from('inventory').upsert(partData as any, { onConflict: 'sku' });
                 if (!error) successCount++;
             }
 
@@ -173,7 +100,7 @@ const InventoryList = () => {
 
     const kpiData = {
         total: parts.length,
-        lowStock: parts.filter(p => p.quantity <= p.min_threshold).length,
+        active: parts.filter(p => p.is_active).length,
         totalValue: parts.reduce((acc, p) => acc + (p.price * p.quantity), 0)
     };
 
@@ -214,114 +141,51 @@ const InventoryList = () => {
                             <Download className="w-5 h-5" />
                             تصدير
                         </button>
-
-                        <button
-                            onClick={() => setShowArchived(!showArchived)}
-                            className={`flex items-center gap-3 px-6 py-4 rounded-2xl font-black transition-all border ${showArchived
-                                ? 'bg-amber-500 text-white border-amber-600'
-                                : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10'
-                                }`}
-                        >
-                            {showArchived ? <ArchiveRestore className="w-5 h-5" /> : <Archive className="w-5 h-5" />}
-                            {showArchived ? 'المخزون النشط' : 'الأرشيف'}
-                        </button>
                     </div>
                 </div>
             </div>
 
             {/* KPI Section */}
-            {!showArchived && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 p-8 rounded-[2.5rem]">
-                        <p className="text-white/40 font-bold mb-2">إجمالي الأصناف</p>
-                        <h3 className="text-4xl font-black text-white">{kpiData.total}</h3>
-                    </div>
-                    <div className="bg-red-500/10 backdrop-blur-xl border border-red-500/20 p-8 rounded-[2.5rem]">
-                        <p className="text-red-400 font-bold mb-2">أصناف منخفضة</p>
-                        <h3 className="text-4xl font-black text-red-500">{kpiData.lowStock}</h3>
-                    </div>
-                    <div className="bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/20 p-8 rounded-[2.5rem]">
-                        <p className="text-emerald-400 font-bold mb-2">قيمة المخزون</p>
-                        <h3 className="text-4xl font-black text-emerald-500">{kpiData.totalValue.toLocaleString()} ج.م</h3>
-                    </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 p-8 rounded-[2.5rem]">
+                    <p className="text-white/40 font-bold mb-2">إجمالي الأصناف</p>
+                    <h3 className="text-4xl font-black text-white">{kpiData.total}</h3>
                 </div>
-            )}
+                <div className="bg-indigo-500/10 backdrop-blur-xl border border-indigo-500/20 p-8 rounded-[2.5rem]">
+                    <p className="text-indigo-400 font-bold mb-2">الأصناف النشطة</p>
+                    <h3 className="text-4xl font-black text-indigo-500">{kpiData.active}</h3>
+                </div>
+                <div className="bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/20 p-8 rounded-[2.5rem]">
+                    <p className="text-emerald-400 font-bold mb-2">قيمة المخزون</p>
+                    <h3 className="text-4xl font-black text-emerald-500">{kpiData.totalValue.toLocaleString()} ج.م</h3>
+                </div>
+            </div>
 
             {/* Table Section */}
             <div className="relative">
                 <SovereignTable
                     schemaKey="inventory_management_v1"
-                    data={parts.map(p => ({
-                        ...p,
-                        _actions: showArchived ? ['restore'] : undefined
-                    }))}
-                    loading={loading}
+                    data={parts}
+                    loading={loading || schemaLoading}
                     onAction={handleAction}
-                    onBatchAction={handleBatchAction}
                     searchTerm={searchTerm}
                     onSearch={setSearchTerm}
                 />
             </div>
 
             {/* Action Modal */}
-            <SovereignActionModal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                schemaKey="inventory_management_v1"
-                initialData={selectedItem}
-                title={modalAction === 'add' ? 'إضافة صنف سيادي' : 'تعديل بيانات الصنف'}
-                onComplete={handleModalComplete}
-            />
-
-            {/* Restock Custom Modal */}
-            {showRestockModal && selectedItem && (
-                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl z-[60] flex items-center justify-center p-4">
-                    <div className="bg-slate-800 border border-white/10 rounded-[3rem] w-full max-w-md shadow-2xl p-10 space-y-8 animate-in zoom-in-95">
-                        <div className="text-center space-y-4">
-                            <div className="bg-indigo-600/20 p-6 rounded-[2rem] border border-indigo-500/30 w-fit mx-auto">
-                                <TrendingUp className="w-10 h-10 text-indigo-400" />
-                            </div>
-                            <h2 className="text-3xl font-black text-white">تغذية المخزون</h2>
-                            <p className="text-white/40 font-bold">{selectedItem.name_ar}</p>
-                        </div>
-
-                        <form onSubmit={handleRestock} className="space-y-8">
-                            <div className="bg-white/5 p-6 rounded-3xl border border-white/5 flex items-center justify-between">
-                                <span className="text-white/40 font-bold">الرصيد الحالي</span>
-                                <span className="text-2xl font-black text-white">{selectedItem.quantity}</span>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-white/40 mr-2">الكمية الجديدة</label>
-                                <input
-                                    autoFocus
-                                    type="number"
-                                    min="1"
-                                    value={restockAmount}
-                                    onChange={e => setRestockAmount(parseInt(e.target.value) || 0)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-6 text-center text-3xl font-black text-white focus:border-indigo-500 outline-none transition-all"
-                                />
-                            </div>
-
-                            <div className="flex gap-4">
-                                <button
-                                    type="submit"
-                                    disabled={submitting}
-                                    className="flex-1 bg-indigo-600 text-white p-6 rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-2"
-                                >
-                                    {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'تأكيد العملية'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowRestockModal(false)}
-                                    className="flex-1 bg-white/5 text-white p-6 rounded-2xl font-black border border-white/10 hover:bg-white/10 transition-all"
-                                >
-                                    إلغاء
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
+            {isModalOpen && schema && (
+                <SovereignActionModal
+                    schema={schema}
+                    tableName="inventory"
+                    mode={modalAction}
+                    item={selectedItem}
+                    onClose={() => setIsModalOpen(false)}
+                    onSuccess={() => {
+                        setIsModalOpen(false);
+                        refetch();
+                    }}
+                />
             )}
         </div>
     );

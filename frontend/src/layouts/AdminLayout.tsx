@@ -6,22 +6,22 @@ import {
     Users,
     Store,
     Settings,
-    FileText,
     Search,
     Menu,
     X,
     Bell,
     LogOut,
     Shield,
-    Briefcase,
     UserCog,
     FileInput,
     Map,
     Clock,
-    ChevronLeft
+    ChevronLeft,
+    Zap,
+    Coins,
+    ShieldAlert,
+    BarChart3
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import type { Session } from '@supabase/supabase-js';
 import type { Database } from '../lib/supabase';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
@@ -35,7 +35,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ profile, handleSignOut }) => 
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [searchOpen, setSearchOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const navigate = useNavigate();
     const location = useLocation();
 
     useEffect(() => {
@@ -73,21 +72,24 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ profile, handleSignOut }) => 
     }, []);
 
     const navItems = [
-        { path: '/admin/dashboard', icon: LayoutDashboard, label: 'لوحة البيانات' },
+        { path: '/admin/dashboard', icon: LayoutDashboard, label: 'لوحة القيادة' },
+        { path: '/admin/intelligence', icon: Zap, label: 'الذكاء السيادي' },
+        { path: '/admin/finance', icon: BarChart3, label: 'المركز المالي' },
+        { path: '/admin/payroll', icon: Coins, label: 'الأداء والرواتب' },
         { path: '/admin/tickets', icon: Ticket, label: 'إدارة البلاغات' },
-        { path: '/admin/workforce/roster', icon: Users, label: 'سجل الفنيين' },
-        { path: '/admin/workforce/assignments', icon: Briefcase, label: 'توزيع المهام' },
-        { path: '/admin/map', icon: Map, label: 'الخريطة المباشرة' },
-        { path: '/admin/users', icon: UserCog, label: 'إدارة المستخدمين' },
-        { path: '/admin/inventory', icon: Store, label: 'المخزن' },
-        { path: '/admin/assets', icon: Settings, label: 'الأصول' }, // Map pin or Database icon
         { path: '/admin/maintenance/schedules', icon: Clock, label: 'الصيانة الوقائية' },
-        { path: '/admin/structure', icon: Users, label: 'الهيكل التنظيمي' },
-        { path: '/admin/settings/forms', icon: FileInput, label: 'نماذج الإغلاق' },
-        { path: '/admin/settings/master-data', icon: Settings, label: 'البيانات الأساسية' },
-        { path: '/admin/settings/system', icon: Shield, label: 'إعدادات النظام' },
-        { path: '/admin/logs', icon: FileText, label: 'سجلات النشاط' },
+        { path: '/admin/workforce/roster', icon: Users, label: 'سجل الفنيين' },
+        { path: '/admin/map', icon: Map, label: 'الخريطة المباشرة' },
+        { path: '/admin/users', icon: UserCog, label: 'إدارة المستخدمين', adminOnly: true },
+        { path: '/admin/inventory', icon: Store, label: 'المخزن' },
+        { path: '/admin/assets', icon: Settings, label: 'الأصول' },
+        { path: '/admin/structure', icon: Users, label: 'الهيكل التنظيمي', adminOnly: true },
+        { path: '/admin/settings/forms', icon: FileInput, label: 'نماذج الإغلاق', adminOnly: true },
+        { path: '/admin/audit-logs', icon: ShieldAlert, label: 'الصندوق الأسود', adminOnly: true },
+        { path: '/admin/settings/system', icon: Shield, label: 'إعدادات النظام', adminOnly: true },
     ];
+
+    const filteredNavItems = navItems.filter(item => !item.adminOnly || profile?.role?.toLowerCase() === 'admin');
 
     return (
         <div className="min-h-screen bg-transparent flex font-sans rtl" dir="rtl">
@@ -126,7 +128,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ profile, handleSignOut }) => 
                 </div>
 
                 <div className="p-4 space-y-1 overflow-y-auto max-h-[calc(100vh-180px)]">
-                    {navItems.map((item) => (
+                    {filteredNavItems.map((item) => (
                         <NavLink
                             key={item.path}
                             to={item.path}

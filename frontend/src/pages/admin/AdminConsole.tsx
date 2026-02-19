@@ -12,7 +12,11 @@ import {
     UserCog,
     Store,
     Shield,
-    Box
+    Box,
+    Coins,
+    ShieldCheck,
+    BarChart3,
+    Zap
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
@@ -107,63 +111,138 @@ const AdminConsole: React.FC = () => {
             {/* Content */}
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm min-h-[500px] overflow-hidden">
                 {activeTab === 'master' ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <MasterCard
-                            title="إدارة التصنيفات"
-                            desc="تعريف أنواع الأعطال وتصميم نماذج التشخيص"
-                            icon={Settings}
-                            color="bg-blue-50 text-blue-600"
-                            onClick={() => navigate('/admin/settings/categories')}
-                        />
-                        <MasterCard
-                            title="إدارة المستخدمين"
-                            desc="إضافة وتعديل صلاحيات الموظفين والفنيين"
-                            icon={UserCog}
-                            color="bg-purple-50 text-purple-600"
-                            onClick={() => navigate('/admin/users')}
-                        />
-                        <MasterCard
-                            title="الهيكل التنظيمي"
-                            desc="إدارة القطاعات، المناطق، والفروع"
-                            icon={Users}
-                            color="bg-emerald-50 text-emerald-600"
-                            onClick={() => navigate('/admin/structure')}
-                        />
-                        <MasterCard
-                            title="المخزن والمهمات"
-                            desc="إدارة قطع الغيار والعهدة المخزنية"
-                            icon={Store}
-                            color="bg-amber-50 text-amber-600"
-                            onClick={() => navigate('/admin/inventory')}
-                        />
-                        <MasterCard
-                            title="إدارة الأصول"
-                            desc="تتبع المعدات وسجل الضمان والصيانة"
-                            icon={Box}
-                            color="bg-indigo-50 text-indigo-600"
-                            onClick={() => navigate('/admin/assets')}
-                        />
-                        <MasterCard
-                            title="جدولة الصيانة"
-                            desc="تنظيم المواعيد الدورية والزيارات الوقائية"
-                            icon={Calendar}
-                            color="bg-cyan-50 text-cyan-600"
-                            onClick={() => navigate('/admin/maintenance/schedules')}
-                        />
-                        <MasterCard
-                            title="إعدادات النظام"
-                            desc="تخصيص خيارات التطبيق والتحكم العام"
-                            icon={Shield}
-                            color="bg-slate-50 text-slate-600"
-                            onClick={() => navigate('/admin/settings/system')}
-                        />
-                        <MasterCard
-                            title="سجلات النشاط"
-                            desc="مراجعة سجلات العمليات والتغييرات"
-                            icon={FileText}
-                            color="bg-red-50 text-red-600"
-                            onClick={() => navigate('/admin/logs')}
-                        />
+                    <div className="p-8 space-y-12">
+                        {/* Section: Intelligence & Strategy */}
+                        <div>
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-blue-600/10 rounded-lg">
+                                    <Zap className="w-4 h-4 text-blue-600" />
+                                </div>
+                                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">التحليلات والذكاء الاصطناعي</h2>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <MasterCard
+                                    title="الذكاء السيادي"
+                                    desc="تحليلات استباقية، تنبؤ بالأعطال، وإدارة المخزون الذكي"
+                                    icon={Zap}
+                                    color="bg-blue-600 text-white shadow-lg shadow-blue-200"
+                                    onClick={() => navigate('/admin/intelligence')}
+                                />
+                                <MasterCard
+                                    title="لوحة التحليلات"
+                                    desc="نظرة استراتيجية شاملة على أداء النظام التشغيلي"
+                                    icon={BarChart3}
+                                    color="bg-slate-900 text-white"
+                                    onClick={() => navigate('/admin/dashboard')}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Section: Operations & Workflow */}
+                        <div>
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-emerald-600/10 rounded-lg">
+                                    <Settings className="w-4 h-4 text-emerald-600" />
+                                </div>
+                                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">العمليات والتشغيل</h2>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <MasterCard
+                                    title="الصيانة الوقائية"
+                                    desc="جدولة المهام الدورية والزيارات المخططة"
+                                    icon={Calendar}
+                                    color="bg-emerald-50 text-emerald-600"
+                                    onClick={() => navigate('/admin/maintenance/schedules')}
+                                />
+                                <MasterCard
+                                    title="إدارة الأصول"
+                                    desc="تتبع المعدات، الضمان، وفترات العمر الافتراضي"
+                                    icon={Box}
+                                    color="bg-indigo-50 text-indigo-600"
+                                    onClick={() => navigate('/admin/assets')}
+                                />
+                                <MasterCard
+                                    title="المخزن والقطع"
+                                    desc="إدارة قطع الغيار والعهدة المخزنية"
+                                    icon={Store}
+                                    color="bg-amber-50 text-amber-600"
+                                    onClick={() => navigate('/admin/inventory')}
+                                />
+                                <MasterCard
+                                    title="نماذج الإغلاق"
+                                    desc="تصميم نماذج التشخيص وتقارير الفنيين"
+                                    icon={FileText}
+                                    color="bg-blue-50 text-blue-600"
+                                    onClick={() => navigate('/admin/settings/forms')}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Section: Workforce & Finance */}
+                        <div>
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-purple-600/10 rounded-lg">
+                                    <Users className="w-4 h-4 text-purple-600" />
+                                </div>
+                                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">القوى العاملة والمالية</h2>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <MasterCard
+                                    title="الأداء والرواتب"
+                                    desc="متابعة الحوافز، المكافآت، وتكلفة العمالة"
+                                    icon={Coins}
+                                    color="bg-purple-50 text-purple-600"
+                                    onClick={() => navigate('/admin/payroll')}
+                                />
+                                <MasterCard
+                                    title="إدارة المستخدمين"
+                                    desc="إضافة الموظفين وتعديل الصلاحيات"
+                                    icon={UserCog}
+                                    color="bg-slate-50 text-slate-600"
+                                    onClick={() => navigate('/admin/users')}
+                                />
+                                <MasterCard
+                                    title="الهيكل التنظيمي"
+                                    desc="إدارة القطاعات، الفروع، والمناطق"
+                                    icon={Store}
+                                    color="bg-teal-50 text-teal-600"
+                                    onClick={() => navigate('/admin/structure')}
+                                />
+                                <MasterCard
+                                    title="المركز المالي"
+                                    desc="نظرة عامة على الإنفاق والميزانية"
+                                    icon={BarChart3}
+                                    color="bg-rose-50 text-rose-600"
+                                    onClick={() => navigate('/admin/finance')}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Section: Security & System */}
+                        <div>
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-2 bg-slate-600/10 rounded-lg">
+                                    <Shield className="w-4 h-4 text-slate-600" />
+                                </div>
+                                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">الأمن والنظام</h2>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <MasterCard
+                                    title="الصندوق الأسود"
+                                    desc="سجلات الرقابة السيادية لعمليات النظام"
+                                    icon={ShieldCheck}
+                                    color="bg-slate-900 text-white"
+                                    onClick={() => navigate('/admin/audit-logs')}
+                                />
+                                <MasterCard
+                                    title="إعدادات النظام"
+                                    desc="تحكم كامل في خيارات التطبيق الأساسية"
+                                    icon={Shield}
+                                    color="bg-slate-50 text-slate-400"
+                                    onClick={() => navigate('/admin/settings/system')}
+                                />
+                            </div>
+                        </div>
                     </div>
                 ) : (
                     <div className="p-0">

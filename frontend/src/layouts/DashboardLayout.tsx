@@ -15,7 +15,8 @@ import {
     Square,
     Loader2,
     Map,
-    Zap
+    Zap,
+    Coins
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
@@ -42,10 +43,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const location = useLocation();
 
-    const isAdmin = profile?.role === 'admin';
-    const isTechnician = profile?.role === 'technician';
-
-    const isManager = profile?.role === 'manager';
+    const userRole = profile?.role?.toLowerCase();
+    const isAdmin = userRole === 'admin';
+    const isTechnician = userRole === 'technician';
+    const isManager = userRole === 'manager';
 
     const menuItems = [
         {
@@ -58,19 +59,19 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             label: 'إدارة النظام',
             path: '/admin/console',
             icon: Settings,
-            show: isAdmin
+            show: isAdmin || isManager
         },
         {
             label: 'الفروع',
             path: '/branches',
             icon: MapPin,
-            show: isAdmin
+            show: isAdmin || isManager
         },
         {
             label: 'الموظفين',
             path: '/staff',
             icon: Users,
-            show: isAdmin
+            show: isAdmin || isManager
         },
         {
             label: 'خريطة الفروع',
@@ -100,6 +101,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             label: 'الذكاء السيادي',
             path: '/admin/intelligence',
             icon: Zap,
+            show: isAdmin || isManager
+        },
+        {
+            label: 'القيادة المالية',
+            path: '/admin/finance',
+            icon: Coins,
             show: isAdmin || isManager
         }
     ];
@@ -165,38 +172,34 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                             const file = new File([blob], `offline_upload_${Date.now()}.jpg`, { type: 'image/jpeg' });
                             const url = await uploadTicketImage(file);
                             processedAnswers[key] = url;
-                            console.log(`Uploaded offline image for Q${key}: ${url}`);
                         } catch (imgError) {
-                            console.error(`Failed to upload offline image for Q${key}`, imgError);
-                            // Maybe keep base64 or fail? Failing entire sync might be safer to prevent data loss.
-                            // But for now let's just log and continue (image might be broken in DB but ticket closed)
-                            // Ideally we should throw to retry later.
+                            // Image upload failed for Q key
                             throw new Error(`Image upload failed for Q${key}`);
                         }
                     }
                 }
 
                 // 2. Fetch existing ticket form data to merge
-                const { data: ticket } = await (supabase
-                    .from('tickets' as any)
+                const { data: ticket } = await supabase
+                    .from('tickets')
                     .select('form_data')
                     .eq('id', ticketId)
-                    .single() as any);
+                    .single();
 
                 const mergedFormData = {
-                    ...(ticket?.form_data || {}),
+                    ...((ticket as any)?.form_data || {}),
                     ...processedAnswers
                 };
 
                 // 3. Update Ticket
                 const { error: updateError } = await (supabase
-                    .from('tickets' as any)
+                    .from('tickets')
                     .update({
                         status: 'closed',
                         closed_at: closedAt,
                         repair_cost: repairCost,
                         repair_duration: repairDuration,
-                        form_data: mergedFormData
+                        form_data: mergedFormData as any
                     })
                     .eq('id', ticketId) as any);
 
@@ -219,10 +222,10 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
             const actionType = isShiftActive ? 'check_out' : 'check_in';
 
             const { error } = await (supabase
-                .from('attendance_logs' as any)
+                .from('attendance_logs')
                 .insert({
                     user_id: profile.id,
-                    action_type: actionType,
+                    action_type: actionType as 'check_in' | 'check_out',
                     location_lat: coords.latitude,
                     location_lng: coords.longitude
                 }) as any);
@@ -246,7 +249,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
     };
 
     return (
-        <div className="min-h-screen bg-transparent flex font-sans rtl" dir="rtl">
+        <div className="min-h-screen bg-slate-900 flex font-sans rtl" dir="rtl">
             {/* Sidebar Overlay (Mobile) */}
             {isSidebarOpen && (
                 <div
@@ -343,7 +346,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                 {/* Header */}
                 <header className="h-16 bg-black/40 backdrop-blur-xl border-b border-white/10 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30">
                     <button
-                        className={`lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors ${isTechnician ? 'hidden' : ''}`}
+                        className={`lg:hidden p-2 text-white/70 hover:bg-white/10 rounded-lg transition-colors ${isTechnician ? 'hidden' : ''}`}
                         onClick={() => setIsSidebarOpen(true)}
                     >
                         <Menu className="w-6 h-6" />
@@ -377,7 +380,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize
                   ${isAdmin ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}
                 `}>
-                                {profile?.role === 'admin' ? 'مدير نظام' : profile?.role === 'manager' ? 'مدير قطاع' : 'فني صيانة'}
+                                {userRole === 'admin' ? 'مدير نظام' : userRole === 'manager' ? 'مدير قطاع' : 'فني صيانة'}
                             </span>
                         </div>
 
@@ -386,6 +389,14 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ profile, handleSignOu
                         </div>
 
                         {profile && <NotificationCenter userId={profile.id} />}
+
+                        <button
+                            onClick={handleSignOut}
+                            className="p-2.5 bg-white/5 border border-white/10 rounded-xl text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-all active:scale-95"
+                            title="تسجيل الخروج"
+                        >
+                            <LogOut className="w-5 h-5" />
+                        </button>
                     </div>
                 </header>
 

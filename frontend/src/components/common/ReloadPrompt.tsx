@@ -12,13 +12,10 @@ function ReloadPrompt() {
                 setNeedRefresh(true);
             },
             onOfflineReady() {
-                console.log('App is ready for offline usage');
             },
             onRegistered(r) {
-                console.log('SW Registered: ' + r);
             },
             onRegisterError(error) {
-                console.log('SW registration error', error);
             },
         });
         updateSWRef.current = update;

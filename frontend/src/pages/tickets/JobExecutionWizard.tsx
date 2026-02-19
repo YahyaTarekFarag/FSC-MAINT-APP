@@ -35,7 +35,6 @@ export default function JobExecutionWizard() {
     useEffect(() => {
         const fetchTicket = async () => {
             if (!id) return;
-            console.log('[Sovereign Debug]: Fetching ticket for execution', id);
             try {
                 const { data, error } = await supabase
                     .from('tickets')
@@ -46,7 +45,6 @@ export default function JobExecutionWizard() {
                 if (error) throw error;
                 if (!data) throw new Error('التذكرة غير موجودة');
 
-                console.log('[Sovereign Debug]: Ticket loaded', data);
                 setTicket(data);
             } catch (error: any) {
                 console.error('[Sovereign Debug]: Fetch error', error);
@@ -61,8 +59,6 @@ export default function JobExecutionWizard() {
     }, [id, navigate]);
 
     const handleComplete = async (formData: any) => {
-        console.log('[Sovereign Debug]: Handling Wizard Completion', formData);
-
         // Geofencing Check
         if (!isAllowed) {
             toast.error('يجب أن تكون في موقع العطل للمتابعة السيادية');
@@ -84,29 +80,21 @@ export default function JobExecutionWizard() {
                 priority: formData.severity_level || ticket?.priority
             };
 
-            console.log('[Sovereign Debug]: Submitting ticket update', updatePayload);
-
             const { error: updateError } = await (supabase.from('tickets') as any)
                 .update(updatePayload)
                 .eq('id', id!);
 
             if (updateError) {
-                console.error('[Sovereign Debug] Update Failed:', updateError);
-                if (updateError.message) console.error('Message:', updateError.message);
-                if (updateError.details) console.error('Details:', updateError.details);
-                if (updateError.hint) console.error('Hint:', updateError.hint);
                 throw updateError;
             }
 
             // 2. Inventory Transaction (Example: if part used)
             if (formData.spare_part_id && formData.quantity) {
-                console.log('[Sovereign Debug]: Consuming spare part', formData.spare_part_id);
                 const { error: rpcError } = await (supabase as any).rpc('consume_spare_part', {
                     p_part_id: formData.spare_part_id,
                     p_quantity: parseInt(formData.quantity, 10),
                     p_ticket_id: id
                 });
-                if (rpcError) console.error('[Sovereign Debug]: Inventory RPC Error', rpcError);
             }
 
             toast.success('تم إتمام المهمة بنجاح سيادي! ✨', { id: 'executing' });
@@ -115,7 +103,10 @@ export default function JobExecutionWizard() {
 
         } catch (err: any) {
             console.error('[Sovereign Debug] Execution Error:', err);
-            const errMsg = (err as any)?.message || 'خطأ غير معروف';
+            let errMsg = (err as any)?.message || 'خطأ غير معروف';
+            if (errMsg.includes('RESOURCE_BUSY')) {
+                errMsg = 'النظام مشغول حالياً بمعالجة هذا العنصر، يرجى المحاولة بعد ثوانٍ.';
+            }
             toast.error(`فشل تنفيذ العملية: ${errMsg}`, { id: 'executing' });
         }
     };

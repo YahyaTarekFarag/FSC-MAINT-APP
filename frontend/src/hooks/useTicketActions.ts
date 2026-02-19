@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useGeoLocation } from './useGeoLocation';
 import toast from 'react-hot-toast';
 
-export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'pending_approval';
 
 export function useTicketActions() {
     const [loading, setLoading] = useState<string | null>(null);
@@ -12,14 +12,12 @@ export function useTicketActions() {
     const updateStatus = async (ticketId: string, newStatus: TicketStatus, metadata: any = {}) => {
         setLoading(ticketId);
         try {
-            console.log(`[Sovereign Debug]: Updating ticket ${ticketId} to status ${newStatus}`);
-
             let coords = null;
             if (newStatus === 'in_progress' || newStatus === 'resolved' || newStatus === 'closed') {
                 try {
                     coords = await getCoordinates();
                 } catch (e) {
-                    console.warn('[Sovereign Debug]: Geolocation unavailable', e);
+                    // Coordinates optional
                 }
             }
 
@@ -42,8 +40,8 @@ export function useTicketActions() {
                 }
             }
 
-            const { error } = await supabase
-                .from('tickets')
+            const { error } = await (supabase
+                .from('tickets') as any)
                 .update(updateData)
                 .eq('id', ticketId);
 
@@ -52,7 +50,6 @@ export function useTicketActions() {
             toast.success(`تم تحديث الحالة إلى ${newStatus} بنجاح`);
             return true;
         } catch (error: any) {
-            console.error('[Sovereign Debug]: Update Status Error', error);
             toast.error(`فشل تحديث الحالة: ${error.message}`);
             return false;
         } finally {

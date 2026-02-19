@@ -6,15 +6,16 @@ import {
     ChevronRight,
     CheckCircle2,
     Play,
-    Loader2
+    Loader2,
+    AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
-import { useGeoLocation } from '../hooks/useGeoLocation';
 import { useTicketActions } from '../hooks/useTicketActions';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     branch: { name_ar: string; location_lat?: number; location_lng?: number };
+    handover_notes?: string;
 };
 
 export default function TechnicianDashboard({ userProfile }: { userProfile: any }) {
@@ -23,7 +24,6 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
     const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
     const [todayTickets, setTodayTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(true);
-    const { getCoordinates } = useGeoLocation();
 
     useEffect(() => {
         fetchDashboardData();
@@ -33,7 +33,6 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
         if (!userProfile?.id) return;
         setLoading(true);
         try {
-            console.log('[Sovereign Debug]: Fetching technician dashboard data');
             // 1. Get Active Ticket (In Progress)
             const { data: active } = await supabase
                 .from('tickets')
@@ -55,7 +54,7 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
             setTodayTickets((todayList || []) as any);
 
         } catch (error) {
-            console.error('[Sovereign Debug]: Error fetching tech dashboard:', error);
+            // Error handled by state
         } finally {
             setLoading(false);
         }
@@ -93,11 +92,11 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
 
                 {/* Stats Row */}
                 <div className="flex gap-4 mt-6">
-                    <div className="bg-slate-800/50 p-3 rounded-2xl flex-1 backdrop-blur-sm border border-white/5">
+                    <div className="bg-white/5 p-3 rounded-2xl flex-1 backdrop-blur-xl border border-white/10 shadow-xl">
                         <div className="text-2xl font-bold text-emerald-400">{todayTickets.length}</div>
                         <div className="text-xs text-slate-400">مهام الانتظار</div>
                     </div>
-                    <div className="bg-slate-800/50 p-3 rounded-2xl flex-1 backdrop-blur-sm border border-white/5">
+                    <div className="bg-white/5 p-3 rounded-2xl flex-1 backdrop-blur-xl border border-white/10 shadow-xl">
                         <div className="text-2xl font-bold text-blue-400">
                             {activeTicket ? 1 : 0}
                         </div>
@@ -114,6 +113,17 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
                             <Play className="w-5 h-5 text-blue-600 fill-current" />
                             المهمة الحالية
                         </h2>
+
+                        {activeTicket.handover_notes && (
+                            <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl mb-4 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="text-amber-500 font-bold text-sm">تم رفض المهمة مسبقاً - ملاحظات المدير:</p>
+                                    <p className="text-slate-600 text-sm mt-1 font-medium">{activeTicket.handover_notes}</p>
+                                </div>
+                            </div>
+                        )}
+
                         <div
                             onClick={() => handleQuickAction(activeTicket.id)}
                             className="bg-blue-600 text-white p-5 rounded-3xl shadow-lg shadow-blue-200 active:scale-95 transition-transform cursor-pointer relative overflow-hidden"
@@ -165,7 +175,7 @@ export default function TechnicianDashboard({ userProfile }: { userProfile: any 
                                 >
                                     <div className="flex items-center gap-4 flex-1 min-w-0" onClick={() => handleQuickAction(ticket.id)}>
                                         <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500 font-bold text-lg shrink-0">
-                                            {ticket.priority === 'urgent' ? '🚨' : '🔧'}
+                                            {ticket.priority === 'critical' ? '🚨' : '🔧'}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className="font-bold text-slate-900 truncate">{ticket.fault_category}</h4>

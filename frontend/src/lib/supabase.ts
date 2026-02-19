@@ -40,9 +40,9 @@ export type Database = {
                 ];
             };
             branches: {
-                Row: { id: string; area_id: string; brand_id: string; name_ar: string; location_lat: number | null; location_lng: number | null; google_map_link: string | null; address: string | null; phone: string | null; created_at: string; city: string | null };
-                Insert: { id?: string; area_id: string; brand_id: string; name_ar: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string; city?: string | null };
-                Update: { id?: string; area_id?: string; brand_id?: string; name_ar?: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string; city?: string | null };
+                Row: { id: string; area_id: string; brand_id: string; name_ar: string; location_lat: number | null; location_lng: number | null; google_map_link: string | null; address: string | null; phone: string | null; created_at: string; city: string | null; monthly_budget: number | null };
+                Insert: { id?: string; area_id: string; brand_id: string; name_ar: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string; city?: string | null; monthly_budget?: number | null };
+                Update: { id?: string; area_id?: string; brand_id?: string; name_ar?: string; location_lat?: number | null; location_lng?: number | null; google_map_link?: string | null; address?: string | null; phone?: string | null; created_at?: string; city?: string | null; monthly_budget?: number | null };
                 Relationships: [
                     {
                         foreignKeyName: "branches_area_id_fkey";
@@ -250,6 +250,7 @@ export type Database = {
                     repair_duration: number | null;
                     due_date: string | null;
                     asset_id: string | null;
+                    maintenance_cost: number | null;
                 };
                 Insert: {
                     id?: string;
@@ -318,15 +319,63 @@ export type Database = {
             };
 
             ticket_comments: {
-                Row: { id: number; ticket_id: string; user_id: string; content: string; created_at: string };
-                Insert: { id?: number; ticket_id: string; user_id: string; content: string; created_at?: string };
-                Update: { id?: number; ticket_id?: string; user_id?: string; content?: string; created_at?: string };
+                Row: { id: number; ticket_id: string; user_id: string; content: string; created_at: string; parent_id: number | null };
+                Insert: { id?: number; ticket_id: string; user_id: string; content: string; created_at?: string; parent_id?: number | null };
+                Update: { id?: number; ticket_id?: string; user_id?: string; content?: string; created_at?: string; parent_id?: number | null };
                 Relationships: [
                     {
                         foreignKeyName: "ticket_comments_ticket_id_fkey";
                         columns: ["ticket_id"];
                         isOneToOne: false;
                         referencedRelation: "tickets";
+                        referencedColumns: ["id"];
+                    },
+                    {
+                        foreignKeyName: "ticket_comments_parent_id_fkey";
+                        columns: ["parent_id"];
+                        isOneToOne: false;
+                        referencedRelation: "ticket_comments";
+                        referencedColumns: ["id"];
+                    }
+                ];
+            };
+            comment_attachments: {
+                Row: { id: string; comment_id: number; file_url: string; file_type: string | null; file_name: string | null; created_at: string };
+                Insert: { id?: string; comment_id: number; file_url: string; file_type?: string | null; file_name?: string | null; created_at?: string };
+                Update: { id?: string; comment_id?: number; file_url?: string; file_type?: string | null; file_name?: string | null; created_at?: string };
+                Relationships: [
+                    {
+                        foreignKeyName: "comment_attachments_comment_id_fkey";
+                        columns: ["comment_id"];
+                        isOneToOne: false;
+                        referencedRelation: "ticket_comments";
+                        referencedColumns: ["id"];
+                    }
+                ];
+            };
+            technician_skills: {
+                Row: { id: string; name: string; category: string | null; created_at: string };
+                Insert: { id?: string; name: string; category?: string | null; created_at?: string };
+                Update: { id?: string; name?: string; category?: string | null; created_at?: string };
+                Relationships: [];
+            };
+            profile_skills: {
+                Row: { profile_id: string; skill_id: string; proficiency_level: number };
+                Insert: { profile_id: string; skill_id: string; proficiency_level?: number };
+                Update: { profile_id?: string; skill_id?: string; proficiency_level?: number };
+                Relationships: [
+                    {
+                        foreignKeyName: "profile_skills_profile_id_fkey";
+                        columns: ["profile_id"];
+                        isOneToOne: false;
+                        referencedRelation: "profiles";
+                        referencedColumns: ["id"];
+                    },
+                    {
+                        foreignKeyName: "profile_skills_skill_id_fkey";
+                        columns: ["skill_id"];
+                        isOneToOne: false;
+                        referencedRelation: "technician_skills";
                         referencedColumns: ["id"];
                     }
                 ];
@@ -540,6 +589,30 @@ export type Database = {
                         referencedColumns: ["id"];
                     }
                 ];
+            };
+            ui_schemas: {
+                Row: {
+                    id: string;
+                    schema_key: string;
+                    schema_definition: Json;
+                    is_active: boolean;
+                    created_at: string;
+                };
+                Insert: {
+                    id?: string;
+                    schema_key: string;
+                    schema_definition: Json;
+                    is_active?: boolean;
+                    created_at?: string;
+                };
+                Update: {
+                    id?: string;
+                    schema_key?: string;
+                    schema_definition?: Json;
+                    is_active?: boolean;
+                    created_at?: string;
+                };
+                Relationships: [];
             };
             maintenance_schedules: {
                 Row: {

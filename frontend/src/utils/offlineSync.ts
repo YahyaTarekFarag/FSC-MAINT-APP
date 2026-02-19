@@ -49,7 +49,6 @@ export const saveClosureOffline = async (ticketId: string, data: ClosureData): P
             timestamp: Date.now(),
             retryCount: 0,
         });
-        console.log('Saved closure offline:', id);
         return id;
     } catch (err: unknown) {
         // Handle storage quota exceeded
@@ -57,7 +56,6 @@ export const saveClosureOffline = async (ticketId: string, data: ClosureData): P
             err instanceof DOMException &&
             (err.name === 'QuotaExceededError' || err.code === 22)
         ) {
-            console.error('Storage quota exceeded:', err);
             toast.error('مساحة التخزين ممتلئة! يرجى حذف بعض البيانات أو الاتصال بالإنترنت لمزامنة البيانات المعلقة.');
             return null;
         }
@@ -88,8 +86,6 @@ export const syncClosures = async (
     const items = await getOfflineClosures();
     if (items.length === 0) return;
 
-    console.log(`Syncing ${items.length} offline closures...`);
-
     let successCount = 0;
     let failCount = 0;
 
@@ -98,7 +94,6 @@ export const syncClosures = async (
             await syncFunction(item);
             await removeOfflineClosure(item.id);
             successCount++;
-            console.log('Synced and removed:', item.id);
         } catch (error) {
             failCount++;
             console.error('Failed to sync item:', item.id, error);
@@ -108,7 +103,6 @@ export const syncClosures = async (
             if (currentRetries >= MAX_RETRIES) {
                 // Max retries reached — remove the item and notify
                 await removeOfflineClosure(item.id);
-                console.warn(`Item ${item.id} exceeded max retries (${MAX_RETRIES}), removed.`);
                 toast.error(`فشل مزامنة بلاغ بعد ${MAX_RETRIES} محاولات. تم حذفه.`);
             } else {
                 // Update retry count for next attempt

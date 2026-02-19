@@ -87,7 +87,7 @@ const UserManager = () => {
         }
 
         if (roleFilter !== 'all') {
-            result = result.filter(u => u.role === roleFilter);
+            result = result.filter(u => u.role?.toLowerCase() === roleFilter);
         }
 
         setFilteredUsers(result);
@@ -145,17 +145,17 @@ const UserManager = () => {
         setSaving(true);
         try {
             // 1. Update Profile Data
-            const { error: profileError } = await supabase
+            const { error: profileError } = await (supabase
                 .from('profiles')
                 .update({
-                    full_name: formData.full_name,
-                    email: formData.email, // Also update in profile
-                    phone: formData.phone,
-                    role: formData.role,
-                    status: formData.status,
-                    assigned_area_id: formData.assigned_area_id
-                } as any)
-                .eq('id', selectedUser.id);
+                    full_name: formData.full_name || null,
+                    email: formData.email || null,
+                    phone: formData.phone || null,
+                    role: formData.role as any,
+                    status: formData.status as any,
+                    assigned_area_id: formData.assigned_area_id || null
+                })
+                .eq('id', selectedUser.id) as any);
 
             if (profileError) throw profileError;
 
@@ -227,14 +227,14 @@ const UserManager = () => {
 
         setSaving(true);
         try {
-            const { error } = await supabase
+            const { error } = await (supabase
                 .from('profiles')
-                .update({ status: newStatus } as any)
-                .eq('id', user.id);
+                .update({ status: newStatus as any })
+                .eq('id', user.id) as any);
 
             if (error) throw error;
 
-            setUsers(users.map(u => u.id === user.id ? { ...u, status: newStatus as any } : u));
+            setUsers(users.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
             toast.success(`تم ${newStatus === 'suspended' ? 'إيقاف' : 'إعادة تفعيل'} المستخدم بنجاح ✅`);
         } catch (error: any) {
             console.error('Error toggling status:', error);
@@ -398,14 +398,14 @@ const UserManager = () => {
                                     <td className="p-4">
                                         <span className={`
                                             inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border
-                                            ${user.role === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                                                user.role === 'manager' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                            ${user.role?.toLowerCase() === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                                user.role?.toLowerCase() === 'manager' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                                                     'bg-slate-50 text-slate-700 border-slate-100'}
                                         `}>
-                                            {user.role === 'admin' && <Shield className="w-3 h-3" />}
-                                            {user.role === 'manager' && <Briefcase className="w-3 h-3" />}
-                                            {user.role === 'technician' && <User className="w-3 h-3" />}
-                                            {user.role === 'admin' ? 'مدير نظام' : user.role === 'manager' ? 'مدير فرع' : 'فني صيانة'}
+                                            {user.role?.toLowerCase() === 'admin' && <Shield className="w-3 h-3" />}
+                                            {user.role?.toLowerCase() === 'manager' && <Briefcase className="w-3 h-3" />}
+                                            {user.role?.toLowerCase() === 'technician' && <User className="w-3 h-3" />}
+                                            {user.role?.toLowerCase() === 'admin' ? 'مدير نظام' : user.role?.toLowerCase() === 'manager' ? 'مدير فرع' : 'فني صيانة'}
                                         </span>
                                     </td>
                                     <td className="p-4">

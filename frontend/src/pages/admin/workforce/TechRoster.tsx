@@ -70,7 +70,7 @@ export default function TechRoster() {
                     *,
                     assigned_area:areas(name_ar),
                     assigned_sector:sectors(name_ar),
-                    tickets(
+                    tickets!technician_id(
                         id,
                         status,
                         created_at,

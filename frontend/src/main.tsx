@@ -3,12 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
-import { ErrorBoundary } from './components/ui/ErrorBoundary.tsx'
+import { GlobalErrorBoundary } from './components/layout/GlobalErrorBoundary'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
+    <GlobalErrorBoundary>
       <App />
-    </ErrorBoundary>
+    </GlobalErrorBoundary>
   </StrictMode>,
 )

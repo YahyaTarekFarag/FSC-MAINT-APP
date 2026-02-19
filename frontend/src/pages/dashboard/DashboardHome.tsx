@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
     BarChart,
     Bar,
@@ -51,29 +51,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
         loading
     } = useDashboardStats(userProfile);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-[#0f172a] p-8 space-y-8 pb-20">
-                <div className="flex justify-between items-center">
-                    <div className="space-y-2">
-                        <Skeleton width={200} height={32} className="bg-white/5" />
-                        <Skeleton width={300} height={20} className="bg-white/5" />
-                    </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {[1, 2, 3, 4].map(i => (
-                        <Skeleton key={i} height={160} className="rounded-3xl bg-white/5" />
-                    ))}
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <Skeleton height={400} className="rounded-3xl bg-white/5" />
-                    <Skeleton height={400} className="rounded-3xl bg-white/5" />
-                </div>
-            </div>
-        );
-    }
-
-    const kpis = [
+    const kpis = useMemo(() => [
         {
             label: 'إجمالي البلاغات',
             value: total,
@@ -110,20 +88,42 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
             iconColor: 'text-emerald-400',
             trend: 'ممتاز'
         }
-    ];
+    ], [total, open, emergency, closedToday]);
 
-    const priorityColors: Record<string, string> = {
+    const priorityColors: Record<string, string> = useMemo(() => ({
         low: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
         medium: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
         high: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
         urgent: 'bg-red-500/10 text-red-400 border-red-500/20'
-    };
+    }), []);
 
-    const statusLabels: Record<string, string> = {
+    const statusLabels: Record<string, string> = useMemo(() => ({
         open: 'مفتوح',
         in_progress: 'قيد التنفيذ',
         closed: 'مغلق'
-    };
+    }), []);
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-[#0f172a] p-8 space-y-8 pb-20">
+                <div className="flex justify-between items-center">
+                    <div className="space-y-2">
+                        <Skeleton width={200} height={32} className="bg-white/5" />
+                        <Skeleton width={300} height={20} className="bg-white/5" />
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[1, 2, 3, 4].map(i => (
+                        <Skeleton key={i} height={160} className="rounded-3xl bg-white/5" />
+                    ))}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <Skeleton height={400} className="rounded-3xl bg-white/5" />
+                    <Skeleton height={400} className="rounded-3xl bg-white/5" />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-[#0f172a] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-[#0f172a] to-black p-4 md:p-8 font-sans rtl space-y-12 pb-24" dir="rtl">
@@ -148,7 +148,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                         <QrCode className="w-6 h-6 text-blue-400" />
                         مسح كود
                     </button>
-                    {(userProfile?.role === 'admin' || userProfile?.role === 'technician') && (
+                    {((userProfile?.role?.toLowerCase() === 'admin') || (userProfile?.role?.toLowerCase() === 'technician') || (userProfile?.role?.toLowerCase() === 'manager')) && (
                         <button
                             onClick={() => navigate('/maps')}
                             className="w-full lg:w-auto bg-white/5 backdrop-blur-xl border border-white/10 text-white px-8 py-5 rounded-3xl font-black hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center gap-3 shadow-lg"
@@ -168,7 +168,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
 
             {/* KPI Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {kpis.map((kpi, idx) => (
+                {kpis?.map((kpi, idx) => (
                     <div key={idx} className={`bg-gradient-to-br ${kpi.color} ${kpi.border} border backdrop-blur-2xl p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group transition-all duration-500 hover:scale-[1.02]`}>
                         <div className="relative z-10 flex flex-col justify-between h-full min-h-[140px]">
                             <div className="flex justify-between items-start">
@@ -198,7 +198,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                     </h3>
                     <div className="h-[350px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={categoryDistribution} layout="vertical" margin={{ left: 20 }}>
+                            <BarChart data={categoryDistribution || []} layout="vertical" margin={{ left: 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.05)" />
                                 <XAxis type="number" hide />
                                 <YAxis
@@ -233,7 +233,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
-                                    data={statusDistribution}
+                                    data={statusDistribution || []}
                                     cx="50%"
                                     cy="40%"
                                     innerRadius={80}
@@ -242,7 +242,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                                     dataKey="value"
                                     stroke="none"
                                 >
-                                    {statusDistribution.map((_, index) => (
+                                    {statusDistribution?.map((_, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
@@ -274,12 +274,12 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ userProfile }) => {
                     </button>
                 </div>
                 <div className="divide-y divide-white/5">
-                    {recentTickets.length === 0 ? (
+                    {(!recentTickets || recentTickets.length === 0) ? (
                         <div className="p-32 text-center text-white/20 font-black uppercase tracking-[0.2em] text-sm animate-pulse">
                             سكون مطلق... لا توجد بيانات مسجلة
                         </div>
                     ) : (
-                        recentTickets.map(ticket => (
+                        recentTickets?.map(ticket => (
                             <div
                                 key={ticket.id}
                                 onClick={() => navigate(`/tickets/${ticket.id}`)}

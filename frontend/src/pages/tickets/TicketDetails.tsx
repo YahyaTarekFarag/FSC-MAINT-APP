@@ -15,7 +15,8 @@ import {
     User,
     Activity,
     History,
-    Clock
+    Clock,
+    Coins
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/supabase';
@@ -28,6 +29,7 @@ import { useGeoLocation } from '../../hooks/useGeoLocation';
 import { X, MessageCircle } from 'lucide-react';
 import { NotificationEngine } from '../../utils/NotificationEngine';
 import { TicketAuditLog } from '../../components/tickets/TicketAuditLog';
+import { HandoverApprovalModal } from '../../components/tickets/HandoverApprovalModal';
 import toast from 'react-hot-toast';
 
 type Ticket = Database['public']['Tables']['tickets']['Row'] & {
@@ -36,6 +38,8 @@ type Ticket = Database['public']['Tables']['tickets']['Row'] & {
     category_id?: string;
     technician?: { full_name: string | null };
     maintenance_assets?: { name: string } | null;
+    maintenance_cost?: number | null;
+    status: string;
 };
 
 
@@ -60,6 +64,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
     const [showCloseModal, setShowCloseModal] = useState(false);
     const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
     const [showDispatchMap, setShowDispatchMap] = useState(false);
+    const [showHandoverModal, setShowHandoverModal] = useState(false);
     const { getCoordinates } = useGeoLocation();
 
     const handleWhatsApp = async (phone: string | null, type: 'branch' | 'technician') => {
@@ -204,7 +209,8 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
     const statusConfig = {
         open: { label: 'مفتوح', color: 'bg-amber-500/10 text-amber-600 border-amber-500/20', icon: AlertTriangle },
         in_progress: { label: 'قيد التنفيذ', color: 'bg-blue-500/10 text-blue-600 border-blue-500/20', icon: Play },
-        closed: { label: 'مغلق', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', icon: CheckCircle2 }
+        closed: { label: 'مغلق', color: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', icon: CheckCircle2 },
+        pending_approval: { label: 'بانتظار الاعتماد', color: 'bg-purple-500/10 text-purple-600 border-purple-500/20', icon: Clock }
     };
 
     const priorityLabels: Record<string, string> = {
@@ -252,6 +258,21 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                     </div>
                 </div>
 
+                {/* TCO Display (Closed Tickets) */}
+                {ticket.status === 'closed' && (
+                    <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex flex-col items-end gap-1 animate-in zoom-in duration-500">
+                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">إجمالي تكلفة الصيانة (TCO)</span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl font-black text-slate-900 font-mono">
+                                {(ticket.maintenance_cost || 0).toLocaleString()} <span className="text-sm font-bold text-slate-400">ج.م</span>
+                            </span>
+                            <div className="bg-emerald-500 text-white p-2 rounded-xl shadow-lg shadow-emerald-200">
+                                <Coins className="w-6 h-6" />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Quick Actions (Technician) & History */}
                 <div className="flex items-center gap-3">
                     {ticket.asset_id && (
@@ -284,10 +305,20 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                                     className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 hover:bg-emerald-700 active:scale-95 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                                 >
                                     {actionLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
-                                    إغلاق البلاغ
+                                    {userProfile?.role === 'technician' ? 'إتمام وطلب اعتماد' : 'إغلاق البلاغ'}
                                 </button>
                             )}
                         </>
+                    )}
+
+                    {(userProfile?.role === 'admin' || userProfile?.role === 'manager') && (ticket.status as any) === 'pending_approval' && (
+                        <button
+                            onClick={() => setShowHandoverModal(true)}
+                            className="bg-purple-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 hover:bg-purple-700 active:scale-95 transition-all shadow-lg shadow-purple-500/20"
+                        >
+                            <CheckCircle2 className="w-6 h-6" />
+                            مراجعة واعتماد الإصلاح
+                        </button>
                     )}
                 </div>
             </div>
@@ -367,7 +398,7 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                     <TicketComments ticketId={ticket.id} />
 
                     {/* Audit Trail (Admin/Manager only) */}
-                    {(userProfile?.role === 'admin' || userProfile?.role === 'manager') && (
+                    {(userProfile?.role?.toLowerCase() === 'admin' || userProfile?.role?.toLowerCase() === 'manager') && (
                         <TicketAuditLog recordId={ticket.id} />
                     )}
                 </div>
@@ -596,6 +627,17 @@ const TicketDetails: React.FC<TicketDetailsProps> = ({ userProfile }) => {
                     onClose={() => setShowCloseModal(false)}
                     onSuccess={() => {
                         setShowCloseModal(false);
+                        fetchTicketDetails();
+                    }}
+                />
+            )}
+            {/* Handover Approval Modal */}
+            {showHandoverModal && ticket && (
+                <HandoverApprovalModal
+                    ticketId={ticket.id}
+                    onClose={() => setShowHandoverModal(false)}
+                    onSuccess={() => {
+                        setShowHandoverModal(false);
                         fetchTicketDetails();
                     }}
                 />

@@ -35,9 +35,10 @@ export function useGeofence(targetLocation: Location | null) {
     };
 
     useEffect(() => {
-        let watchId: number;
+        let watchId: number | null = null;
+        const controller = new AbortController();
 
-        async function initGeofence() {
+        async function initGeofence(signal: AbortSignal) {
             try {
                 // 1. Fetch Max Radius from system_config
                 const { data: config, error: configError } = await supabase
@@ -45,6 +46,8 @@ export function useGeofence(targetLocation: Location | null) {
                     .select('value')
                     .eq('key', 'geofence_settings')
                     .single();
+
+                if (signal.aborted) return;
 
                 if (configError) throw configError;
 
@@ -61,6 +64,8 @@ export function useGeofence(targetLocation: Location | null) {
                 if (!navigator.geolocation) {
                     throw new Error('متصفحك لا يدعم خاصية تحديد الموقع');
                 }
+
+                if (signal.aborted) return;
 
                 // 2. Watch Position
                 watchId = navigator.geolocation.watchPosition(
@@ -89,16 +94,20 @@ export function useGeofence(targetLocation: Location | null) {
                 );
 
             } catch (err: any) {
+                if (signal.aborted) return;
                 console.error('Geofence Init Error:', err);
                 setError(err.message || 'فشل تهيئة نظام الحماية الجغرافي');
                 setLoading(false);
             }
         }
 
-        initGeofence();
+        initGeofence(controller.signal);
 
         return () => {
-            if (watchId) navigator.geolocation.clearWatch(watchId);
+            controller.abort();
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+            }
         };
     }, [targetLocation?.lat, targetLocation?.lng]);
 

@@ -27,8 +27,8 @@ export default function TicketList({ userProfile }: TicketListProps) {
     const fetchTickets = useCallback(async () => {
         setLoading(true);
         try {
-            let query = supabase
-                .from('tickets')
+            let query = (supabase
+                .from('tickets') as any)
                 .select('*, branch:branches(name_ar, phone)');
 
             if (filterStatus !== 'all') {
@@ -40,9 +40,10 @@ export default function TicketList({ userProfile }: TicketListProps) {
             }
 
             // RBAC Filtering
-            if (userProfile?.role === 'manager' && userProfile.branch_id) {
+            const userRole = userProfile?.role?.toLowerCase();
+            if (userRole === 'manager' && userProfile?.branch_id) {
                 query = query.eq('branch_id', userProfile.branch_id);
-            } else if (userProfile?.role === 'technician') {
+            } else if (userRole === 'technician' && userProfile?.id) {
                 query = query.eq('technician_id', userProfile.id);
             }
 
@@ -50,9 +51,9 @@ export default function TicketList({ userProfile }: TicketListProps) {
 
             if (error) throw error;
             setTickets(data || []);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Fetch Error:', err);
-            toast.error('فشل تحميل قائمة البلاغات');
+            toast.error(`فشل التحميل: ${err?.message || err}`);
         } finally {
             setLoading(false);
         }

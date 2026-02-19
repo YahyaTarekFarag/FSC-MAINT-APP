@@ -23,7 +23,6 @@ interface SovereignWizardProps {
 
 export const SovereignWizard: React.FC<SovereignWizardProps> = ({ formKey, onComplete, initialData = {}, context }) => {
     const { schema, loading, error: uiSchemaError } = useUISchema(formKey);
-    console.log('[Sovereign Debug] Schema loaded:', schema);
     const [currentStepIdx, setCurrentStepIdx] = useState(0);
     const [formData, setFormData] = useState<any>(initialData || {});
     const [error, setError] = useState<unknown>(null);
@@ -42,7 +41,6 @@ export const SovereignWizard: React.FC<SovereignWizardProps> = ({ formKey, onCom
                 for (const field of (step.fields || [])) {
                     if ((field as any).dataSource) {
                         const table = (field as any).dataSource;
-                        console.log(`[Sovereign Debug]: Fetching data for ${table}`);
 
                         let query = supabase.from(table).select('*');
 
@@ -54,7 +52,6 @@ export const SovereignWizard: React.FC<SovereignWizardProps> = ({ formKey, onCom
                         const { data, error: fetchError } = await query;
 
                         if (fetchError) {
-                            console.error(`[Sovereign Debug] Error fetching ${table}:`, fetchError);
                             optionsMap[field.id] = [];
                             continue; // Don't crash for one failed table
                         }
@@ -69,7 +66,6 @@ export const SovereignWizard: React.FC<SovereignWizardProps> = ({ formKey, onCom
             }
             setDynamicOptions(optionsMap as Record<string, { label: string; value: any }[]>);
         } catch (err) {
-            console.error('[Sovereign Debug]: Fatal Error in dynamic fetch:', err);
             // setError(err); // Don't block whole wizard if possible, but maybe show a subtle toast
             toast.error('حدث عطل في جلب بعض القوائم المنسدلة');
         } finally {

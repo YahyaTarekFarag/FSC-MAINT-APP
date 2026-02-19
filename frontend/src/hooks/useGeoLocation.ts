@@ -4,6 +4,7 @@ interface GeoLocationState {
     coords: {
         latitude: number;
         longitude: number;
+        accuracy: number | null;
     } | null;
     error: string | null;
     loading: boolean;
@@ -16,27 +17,29 @@ export const useGeoLocation = () => {
         loading: false
     });
 
-    const getCoordinates = useCallback((): Promise<{ latitude: number; longitude: number }> => {
+    const getCoordinates = useCallback((signal?: AbortSignal): Promise<{ latitude: number; longitude: number }> => {
         return new Promise((resolve, reject) => {
             if (!navigator.geolocation) {
                 const err = 'Geolocation is not supported by your browser';
-                setState(prev => ({ ...prev, error: err }));
+                if (!signal?.aborted) setState(prev => ({ ...prev, error: err }));
                 reject(err);
                 return;
             }
 
-            setState(prev => ({ ...prev, loading: true }));
+            if (!signal?.aborted) setState(prev => ({ ...prev, loading: true }));
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const coords = {
                         latitude: position.coords.latitude,
-                        longitude: position.coords.longitude
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
                     };
-                    setState({ coords, error: null, loading: false });
+                    if (!signal?.aborted) setState({ coords, error: null, loading: false });
                     resolve(coords);
                 },
                 (error) => {
+                    if (signal?.aborted) return;
                     const errMsg = error.message;
                     setState({ coords: null, error: errMsg, loading: false });
                     reject(errMsg);

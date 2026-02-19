@@ -147,9 +147,9 @@ export default function UserManager() {
                                         </div>
                                     </td>
                                     <td className="p-6">
-                                        <span className={`px-3 py-1 rounded-lg text-xs font-black ${user.role === 'admin' ? 'bg-red-100 text-red-600' :
-                                                user.role === 'manager' ? 'bg-blue-100 text-blue-600' :
-                                                    'bg-emerald-100 text-emerald-600'
+                                        <span className={`px-3 py-1 rounded-lg text-xs font-black ${user.role?.toLowerCase() === 'admin' ? 'bg-red-100 text-red-600' :
+                                            user.role?.toLowerCase() === 'manager' ? 'bg-blue-100 text-blue-600' :
+                                                'bg-emerald-100 text-emerald-600'
                                             }`}>
                                             {user.role}
                                         </span>
@@ -201,8 +201,8 @@ export default function UserManager() {
                                             key={r}
                                             onClick={() => handleUpdate({ role: r })}
                                             className={`w-full p-4 rounded-xl border-2 font-black transition-all flex items-center justify-between ${selectedUser.role === r
-                                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                                    : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
+                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
                                                 }`}
                                         >
                                             <span className="capitalize">{r}</span>

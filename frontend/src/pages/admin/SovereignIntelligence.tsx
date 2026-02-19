@@ -1,38 +1,60 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    Radar, RadarChart, PolarGrid, PolarAngleAxis,
-    Cell
-} from 'recharts';
-import {
-    Activity, Shield, Zap, TrendingUp,
-    ArrowRight, Map as MapIcon, RefreshCw
+    Activity, Shield, Zap,
+    ArrowRight, Map as MapIcon, RefreshCw, Calendar, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+    Radar, RadarChart, PolarGrid, PolarAngleAxis, Tooltip, ResponsiveContainer
+} from 'recharts';
+import InventoryForecastDrawer from '../../components/inventory/InventoryForecastDrawer';
 
 const SovereignIntelligence = () => {
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [forecasts, setForecasts] = useState<any[]>([]);
     const [brandAnalysis, setBrandAnalysis] = useState<any[]>([]);
     const [riskHeatmap, setRiskHeatmap] = useState<any[]>([]);
+    const [roiAnalysis, setRoiAnalysis] = useState<any[]>([]);
+    const [pmGaps, setPmGaps] = useState<any[]>([]);
+    const [stockRisk, setStockRisk] = useState<any[]>([]);
+    const [selectedPart, setSelectedPart] = useState<any | null>(null);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
     const fetchData = async () => {
         setLoading(true);
         try {
             const [
-                { data: forecastData },
-                { data: brandData },
-                { data: riskData }
+                forecastRes,
+                brandRes,
+                riskRes,
+                roiRes,
+                gapRes,
+                stockRes
             ] = await Promise.all([
                 supabase.from('v_maintenance_forecasts').select('*').order('days_until_failure', { ascending: true }).limit(6),
-                supabase.from('v_brand_reliability_analysis').select('*').order('failure_rate_per_unit', { ascending: true }),
-                supabase.from('v_operational_risk_heatmap').select('*').order('aggregate_risk_score', { ascending: false })
+                supabase.from('v_brand_reliability_analysis').select('*').order('brand_mtbf_avg', { ascending: false }),
+                supabase.from('v_operational_risk_heatmap').select('*').order('aggregate_risk_score', { ascending: false }),
+                supabase.from('v_asset_roi_analysis').select('*').order('cost_to_purchase_ratio', { ascending: false }).limit(4),
+                supabase.from('v_pm_intelligence_gap').select('*').limit(5),
+                supabase.from('v_inventory_risk_index').select('*').order('days_of_coverage', { ascending: true }).limit(5)
             ]);
 
-            setForecasts(forecastData || []);
-            setBrandAnalysis(brandData || []);
-            setRiskHeatmap(riskData || []);
+            if (forecastRes.error) throw forecastRes.error;
+            if (brandRes.error) throw brandRes.error;
+            if (riskRes.error) throw riskRes.error;
+            if (roiRes.error) throw roiRes.error;
+            if (gapRes.error) throw gapRes.error;
+            if (stockRes.error) throw stockRes.error;
+
+            setForecasts(forecastRes.data || []);
+            setBrandAnalysis(brandRes.data || []);
+            setRiskHeatmap(riskRes.data || []);
+            setRoiAnalysis(roiRes.data || []);
+            setPmGaps(gapRes.data || []);
+            setStockRisk(stockRes.data || []);
         } catch (err) {
             console.error('Intelligence Fetch Error:', err);
             toast.error('فشل في مزامنة البيانات السيادية');
@@ -157,12 +179,22 @@ const SovereignIntelligence = () => {
                                             <span className="text-white font-bold">{f.days_until_failure} يوم</span>
                                         </div>
                                         <RiskBadge status={f.forecast_status} />
-                                        <button
-                                            onClick={() => handleConvertToPMTicket(f)}
-                                            className="p-3 bg-blue-600/10 text-blue-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all"
-                                        >
-                                            <ArrowRight className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => navigate(`/admin/scheduler?assetId=${f.asset_id}&branchId=${f.branch_id}`)}
+                                                className="p-3 bg-emerald-600/10 text-emerald-400 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"
+                                                title="Smart Schedule"
+                                            >
+                                                <Calendar className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleConvertToPMTicket(f)}
+                                                className="p-3 bg-blue-600/10 text-blue-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all"
+                                                title="One-time PM"
+                                            >
+                                                <ArrowRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -203,9 +235,21 @@ const SovereignIntelligence = () => {
                             </div>
                         </div>
 
-                        <button className="w-full mt-10 py-5 bg-white text-slate-950 rounded-[1.5rem] font-black text-sm tracking-tight hover:scale-[1.02] active:scale-95 transition-all">
-                            تحليل المخاطر الشامل
-                        </button>
+                        <div className="mt-10 p-6 bg-red-500/10 border border-red-500/20 rounded-3xl space-y-4">
+                            <div className="flex items-center gap-3 text-red-400">
+                                <AlertTriangle className="w-5 h-5" />
+                                <span className="font-black text-xs uppercase tracking-widest">Intelligence Gap</span>
+                            </div>
+                            <p className="text-white/40 text-[10px] leading-relaxed">
+                                تم رصد <span className="text-white font-bold">{pmGaps.length}</span> معدة عالية المخاطر ليس لها جدول صيانة دورية مفعل.
+                            </p>
+                            <button
+                                onClick={() => navigate('/admin/scheduler')}
+                                className="w-full py-3 bg-red-600/20 text-red-500 border border-red-500/30 rounded-xl font-bold text-xs hover:bg-red-600 hover:text-white transition-all"
+                            >
+                                معالجة فجوات الصيانة
+                            </button>
+                        </div>
                     </div>
 
                     {/* Brand Reliability Radar */}
@@ -228,8 +272,8 @@ const SovereignIntelligence = () => {
                                     <Radar
                                         name="MTBF Average"
                                         dataKey="brand_mtbf_avg"
-                                        stroke="#818cf8"
-                                        fill="#818cf8"
+                                        stroke="#3b82f6"
+                                        fill="#3b82f6"
                                         fillOpacity={0.3}
                                     />
                                     <Tooltip
@@ -240,39 +284,130 @@ const SovereignIntelligence = () => {
                         </div>
                     </div>
 
-                    {/* Operational Trend Analysis */}
-                    <div className="lg:col-span-2 bg-slate-900 border border-white/10 rounded-[3rem] p-10 shadow-2xl overflow-hidden group">
-                        <div className="flex items-center justify-between mb-8">
+                    {/* ROI & TCO Intelligence */}
+                    <div className="lg:col-span-3 bg-white/5 backdrop-blur-3xl rounded-[3rem] border border-white/10 p-10 shadow-2xl space-y-10">
+                        <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                                <div className="bg-emerald-600/20 p-4 rounded-2xl border border-emerald-500/30">
-                                    <TrendingUp className="w-6 h-6 text-emerald-400" />
+                                <div className="bg-amber-600/20 p-4 rounded-2xl border border-amber-500/30">
+                                    <Shield className="w-6 h-6 text-amber-500" />
                                 </div>
-                                <h3 className="text-2xl font-black tracking-tight">معدلات الفشل لكل وحدة</h3>
+                                <div>
+                                    <h3 className="text-2xl font-black tracking-tight">مؤشر العائد على الأصول (ROI)</h3>
+                                    <p className="text-white/20 text-xs font-bold uppercase tracking-widest mt-1">Asset Asset Efficiency & TCO Analytics</p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="h-[300px] w-full" dir="ltr">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={brandAnalysis}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.03)" />
-                                    <XAxis dataKey="brand_name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 11 }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.2)', fontSize: 11 }} />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                                        contentStyle={{ backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '1rem' }}
-                                    />
-                                    <Bar dataKey="failure_rate_per_unit" radius={[10, 10, 0, 0]}>
-                                        {brandAnalysis.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#6366f1'} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            {roiAnalysis.map((asset: any) => (
+                                <div key={asset.id} className="bg-white/[0.03] p-8 rounded-[2rem] border border-white/5 flex flex-col justify-between group hover:bg-white/[0.05] transition-all">
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-start">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-white/30">{asset.branch_name}</span>
+                                            <div className={`px-2 py-0.5 rounded-full text-[8px] font-black ${asset.cost_to_purchase_ratio > 50 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
+                                                {asset.cost_to_purchase_ratio.toFixed(1)}% Ratio
+                                            </div>
+                                        </div>
+                                        <h4 className="font-bold text-lg leading-tight">{asset.name}</h4>
+                                    </div>
+
+                                    <div className="mt-8 pt-8 border-t border-white/5 space-y-4">
+                                        <div className="flex justify-between text-xs font-bold">
+                                            <span className="text-white/40">سعر الشراء</span>
+                                            <span>{asset.purchase_price}$</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs font-bold">
+                                            <span className="text-white/40">تكلفة الصيانة</span>
+                                            <span className="text-red-400">{asset.total_repair_cost}$</span>
+                                        </div>
+                                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden mt-2">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-1000 ${asset.cost_to_purchase_ratio > 50 ? 'bg-red-500' : 'bg-blue-500'}`}
+                                                style={{ width: `${Math.min(100, asset.cost_to_purchase_ratio)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
+                    {/* Stock Intelligence Widget */}
+                    <div className="bg-white/5 backdrop-blur-3xl rounded-[3rem] border border-white/10 p-10 shadow-2xl relative overflow-hidden group">
+                        <div className="flex justify-between items-center mb-8 relative z-10">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-emerald-600/20 p-4 rounded-2xl border border-emerald-500/30">
+                                    <Activity className="w-6 h-6 text-emerald-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black tracking-tight">مخاطر المخزون</h3>
+                                    <p className="text-white/20 text-xs font-bold uppercase tracking-widest mt-1">JIT Stock Intelligence</p>
+                                </div>
+                            </div>
+                        </div>
 
+                        <div className="space-y-6 relative z-10">
+                            {stockRisk.map((item, idx) => (
+                                <div
+                                    key={idx}
+                                    onClick={() => {
+                                        setSelectedPart(item);
+                                        setIsDrawerOpen(true);
+                                    }}
+                                    className="bg-white/5 border border-white/5 rounded-2xl p-5 hover:border-blue-500/30 hover:bg-white/10 transition-all cursor-pointer group/item"
+                                >
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h4 className="font-black text-white">{item.part_name}</h4>
+                                            <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">SKU: {item.sku}</span>
+                                        </div>
+                                        <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${item.stock_status === 'critical' ? 'bg-red-500/20 text-red-400' :
+                                            item.stock_status === 'warning' ? 'bg-amber-500/20 text-amber-400' :
+                                                'bg-emerald-500/20 text-emerald-400'
+                                            }`}>
+                                            {item.stock_status}
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-end">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] text-white/40 font-bold uppercase tracking-tight">Days of Coverage</p>
+                                            <p className={`text-2xl font-black ${item.days_of_coverage < 5 ? 'text-red-400' :
+                                                item.days_of_coverage < 15 ? 'text-amber-400' :
+                                                    'text-white'
+                                                }`}>
+                                                {item.days_of_coverage > 365 ? '>365' : item.days_of_coverage} <span className="text-xs text-white/20">يوم</span>
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] text-white/40 font-bold uppercase tracking-tight">Projected Demand</p>
+                                            <p className="text-lg font-black text-blue-400">{item.projected_30d_demand} <span className="text-[10px] text-white/20">وحدة</span></p>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full transition-all duration-1000 ${item.stock_status === 'critical' ? 'bg-red-500' :
+                                                item.stock_status === 'warning' ? 'bg-amber-500' :
+                                                    'bg-emerald-500'
+                                                }`}
+                                            style={{ width: `${Math.min(100, (item.current_stock / (item.projected_30d_demand || 1)) * 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                            {stockRisk.length === 0 && (
+                                <div className="text-center py-10">
+                                    <p className="text-white/20 font-bold">لا توجد مخاطر مخزون حالياً</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </div>
+
+            <InventoryForecastDrawer
+                isOpen={isDrawerOpen}
+                onClose={() => setIsDrawerOpen(false)}
+                part={selectedPart}
+            />
         </div>
     );
 };
